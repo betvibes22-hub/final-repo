@@ -77,14 +77,13 @@ async function runPipeline(jobId: string) {
 
   // ── Visuals (no approval checkpoint — moves straight through) ──
   setJobStatus(jobId, "generating_visuals", "Selecting footage...");
-  const videoSeed = Math.floor(Math.random() * 1_000_000);
   for (const scene of script.scenes) {
     setJobStatus(
       jobId,
       "generating_visuals",
       `Selecting footage — scene ${scene.index + 1} of ${script.scenes.length}...`
     );
-    scene.visualAssetPaths = await generateVisualsForScene(scene, jobDir, job.request.style, videoSeed);
+    scene.visualAssetPaths = await generateVisualsForScene(scene, jobDir, job.request.style);
   }
   updateJob(jobId, { script });
 
