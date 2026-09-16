@@ -6,12 +6,15 @@ ffmpeg.setFfmpegPath(ffmpegPath.path);
 
 /**
  * Stitches per-scene visual assets + the full voiceover MP3 into one MP4.
- * Stills get a Ken Burns pan/zoom so they don't sit dead-still on screen.
  *
- * Note: burned-in captions (drawtext) were removed — they need a font
- * file that isn't available on this minimal server image by default and
- * caused "Error initializing complex filters" failures. Can be re-added
- * later with a bundled font file if wanted.
+ * Deliberately simple: static scaled/cropped frames, no zoompan (Ken
+ * Burns) and no drawtext. Both were tried and both caused crashes on
+ * Render's free-tier 512MB instance — zoompan recomputes a full frame
+ * for every output frame (720+ frames for a 30s clip), which is far
+ * too memory-heavy for this environment; drawtext needs a font file
+ * that isn't bundled. Reliability wins over cosmetic polish here —
+ * both can be revisited later on a bigger instance or with a bundled
+ * font + lighter zoompan settings.
  */
 export async function composeVideo(
   script: Script,
@@ -48,6 +51,7 @@ export async function composeVideo(
         "-map [outv]",
         `-map ${script.scenes.length}:a`,
         "-c:v libx264",
+        "-preset ultrafast",
         "-c:a aac",
         "-pix_fmt yuv420p",
         "-shortest",
@@ -62,12 +66,11 @@ export async function composeVideo(
 function buildSceneFilter(scene: { visualAssetPath?: string; durationSeconds: number }, index: number): string {
   const isImage = /\.(svg|png|jpg|jpeg)$/i.test(scene.visualAssetPath!);
   const fps = 24;
-  const frames = Math.max(1, Math.round(scene.durationSeconds * fps));
 
   if (isImage) {
     return (
-      `[${index}:v]scale=2208:1242,` +
-      `zoompan=z='min(zoom+0.0007,1.15)':d=${frames}:s=1920x1080:fps=${fps}[v${index}]`
+      `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
+      `crop=1920:1080,fps=${fps}[v${index}]`
     );
   }
 
