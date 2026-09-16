@@ -20,7 +20,8 @@ ffmpeg.setFfmpegPath(ffmpegPath.path);
 export async function composeVideo(
   script: Script,
   voiceoverPath: string,
-  outputPath: string
+  outputPath: string,
+  onLog?: (text: string) => void
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const command = ffmpeg();
@@ -36,6 +37,8 @@ export async function composeVideo(
         segments.push({ asset, duration: perAsset });
       }
     }
+
+    onLog?.(`FFmpeg: compositing ${segments.length} clip(s) across ${script.scenes.length} scene(s)`);
 
     for (const seg of segments) {
       // Video clips: loop indefinitely then trim to the exact segment
@@ -54,6 +57,8 @@ export async function composeVideo(
       perSegmentFilters.join(";") +
       `;${filterInputs}concat=n=${segments.length}:v=1:a=0[outv]`;
 
+    let lastLoggedPercent = -1;
+
     command
       .input(voiceoverPath)
       .complexFilter(filterComplex)
@@ -61,13 +66,32 @@ export async function composeVideo(
         "-map [outv]",
         `-map ${segments.length}:a`,
         "-c:v libx264",
-        "-preset ultrafast",
+        // Quality over speed: the pipeline isn't racing an HTTP timeout
+        // (generation runs in the background, the frontend polls for
+        // status), so there's no reason to trade encode quality away
+        // for raw speed here. "slow" + a lower CRF meaningfully improves
+        // detail and compression efficiency over the old "ultrafast"
+        // default without materially increasing memory use — x264
+        // presets trade CPU time, not RAM, for quality.
+        "-preset slow",
+        "-crf 18",
         "-c:a aac",
+        "-b:a 192k",
         "-pix_fmt yuv420p",
         "-shortest",
       ])
       .output(outputPath)
-      .on("end", () => resolve(outputPath))
+      .on("progress", (p) => {
+        const percent = Math.round(p.percent ?? 0);
+        if (percent >= lastLoggedPercent + 20 && percent > 0) {
+          lastLoggedPercent = percent;
+          onLog?.(`FFmpeg: encoding final cut — ${Math.min(percent, 100)}%`);
+        }
+      })
+      .on("end", () => {
+        onLog?.("FFmpeg: final cut encoded");
+        resolve(outputPath);
+      })
       .on("error", (err) => reject(err))
       .run();
   });
