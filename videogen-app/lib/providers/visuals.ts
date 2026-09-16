@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { Scene, VideoStyle, VisualAsset } from "../types";
+import { downloadToFile } from "./download";
 
 // Multiple clips cut between per scene, matching the faster short-form
 // pace the old AI-image approach had (3 images/scene) — a single long
@@ -109,12 +110,12 @@ async function fetchPixabayVideos(
     const variant = hits[i].videos.medium || hits[i].videos.small || hits[i].videos.large;
     if (!variant) continue;
 
-    const videoRes = await fetch(variant.url);
-    if (!videoRes.ok) continue;
-
-    const buffer = Buffer.from(await videoRes.arrayBuffer());
     const outPath = path.join(outDir, `scene-${scene.index}-${i}.mp4`);
-    fs.writeFileSync(outPath, buffer);
+    try {
+      await downloadToFile(variant.url, outPath);
+    } catch {
+      continue;
+    }
     assets.push({ path: outPath, type: "video" });
   }
 
@@ -145,12 +146,12 @@ async function fetchPixabayPhotos(
 
   for (let i = 0; i < Math.min(count, hits.length); i++) {
     const imageUrl = hits[i].largeImageURL || hits[i].webformatURL;
-    const imageRes = await fetch(imageUrl);
-    if (!imageRes.ok) continue;
-
-    const buffer = Buffer.from(await imageRes.arrayBuffer());
     const outPath = path.join(outDir, `scene-${scene.index}-${i}.jpg`);
-    fs.writeFileSync(outPath, buffer);
+    try {
+      await downloadToFile(imageUrl, outPath);
+    } catch {
+      continue;
+    }
     assets.push({ path: outPath, type: "image" });
   }
 
@@ -181,12 +182,12 @@ async function fetchPexelsPhotos(
 
   for (let i = 0; i < photos.length; i++) {
     const imageUrl: string = photos[i].src.large || photos[i].src.medium || photos[i].src.original;
-    const imageRes = await fetch(imageUrl);
-    if (!imageRes.ok) continue;
-
-    const buffer = Buffer.from(await imageRes.arrayBuffer());
     const outPath = path.join(outDir, `scene-${scene.index}-${i}.jpg`);
-    fs.writeFileSync(outPath, buffer);
+    try {
+      await downloadToFile(imageUrl, outPath);
+    } catch {
+      continue;
+    }
     assets.push({ path: outPath, type: "image" });
   }
 
