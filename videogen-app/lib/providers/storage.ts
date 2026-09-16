@@ -12,7 +12,11 @@ import crypto from "crypto";
  * As a bonus, this also gives us a persistent video library for free —
  * see library.ts, which lists everything uploaded here.
  */
-export async function uploadVideo(localPath: string, title: string): Promise<string> {
+export async function uploadVideo(
+  localPath: string,
+  title: string,
+  onLog?: (text: string) => void
+): Promise<string> {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -22,6 +26,9 @@ export async function uploadVideo(localPath: string, title: string): Promise<str
       "Cloudinary env vars missing (CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET). See .env.example."
     );
   }
+
+  const sizeMb = (fs.statSync(localPath).size / (1024 * 1024)).toFixed(1);
+  onLog?.(`Cloudinary: uploading final video (${sizeMb} MB)`);
 
   const timestamp = Math.floor(Date.now() / 1000);
   const context = `title=${title.replace(/[|=]/g, " ").slice(0, 100)}`;
@@ -51,6 +58,7 @@ export async function uploadVideo(localPath: string, title: string): Promise<str
   }
 
   const data = await res.json();
+  onLog?.("Cloudinary: video stored, library updated");
   return data.secure_url as string;
 }
 
