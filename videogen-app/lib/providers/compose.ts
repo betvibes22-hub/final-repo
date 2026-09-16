@@ -1,23 +1,25 @@
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
+import fs from "fs";
 import path from "path";
 import { Script } from "../types";
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
-const TRANSITION_DURATION = 0.4; // seconds, soft crossfade between images
+const TRANSITION_DURATION = 0.4;
 const FPS = 24;
 
 /**
  * Stitches every scene's images + the full voiceover MP3 into one MP4.
  *
- * - Multiple images per scene, crossfaded between (not hard cuts) using
- *   ffmpeg's real xfade filter.
- * - Captions burned in using a bundled TTF font file (assets/caption-font.ttf)
- *   — a font file is required for drawtext to work at all, and the
- *   server has no default one; bundling our own fixes that for good.
- *
- * No zoompan — that crashed the free-tier server's memory earlier.
+ * Captions are written to individual .txt files and referenced via
+ * ffmpeg's drawtext `textfile=` option, rather than embedding the
+ * caption text directly in the filter string. Caption text (real
+ * sentences with apostrophes, commas, etc.) contains characters that
+ * are special in ffmpeg's own filtergraph syntax, and inline escaping
+ * of that was fragile and caused "Invalid argument" filter errors.
+ * textfile= sidesteps that entirely — only the file PATH needs
+ * escaping, never the caption content.
  */
 export async function composeVideo(
   script: Script,
@@ -27,16 +29,22 @@ export async function composeVideo(
   return new Promise((resolve, reject) => {
     const command = ffmpeg();
     const fontPath = path.join(process.cwd(), "assets", "caption-font.ttf");
+    const captionsDir = path.join(path.dirname(voiceoverPath), "captions");
+    fs.mkdirSync(captionsDir, { recursive: true });
 
-    const segments: { path: string; duration: number; caption: string }[] = [];
+    const segments: { path: string; duration: number; captionFile: string }[] = [];
     for (const scene of script.scenes) {
       const images = scene.visualAssetPaths ?? [];
       if (images.length === 0) {
         throw new Error(`Scene ${scene.index} has no visualAssetPaths — generate visuals first.`);
       }
+
+      const captionFile = path.join(captionsDir, `scene-${scene.index}.txt`);
+      fs.writeFileSync(captionFile, scene.text.slice(0, 140));
+
       const perImage = scene.durationSeconds / images.length;
       for (const imagePath of images) {
-        segments.push({ path: imagePath, duration: perImage, caption: scene.text });
+        segments.push({ path: imagePath, duration: perImage, captionFile });
       }
     }
 
@@ -44,12 +52,8 @@ export async function composeVideo(
       command.input(seg.path).inputOptions(["-loop 1", `-t ${seg.duration}`]);
     }
 
-    // Step 1: scale/crop + caption every segment individually.
     const scaleFilters = segments.map((seg, i) => buildScaleAndCaptionFilter(seg, i, fontPath));
 
-    // Step 2: chain crossfades pairwise — each xfade consumes the running
-    // total and the next clip, offset so the fade starts just before the
-    // running clip ends.
     let cumulativeDuration = segments[0].duration;
     let lastLabel = "s0";
     const xfadeFilters: string[] = [];
@@ -64,10 +68,9 @@ export async function composeVideo(
       lastLabel = outLabel;
     }
 
-    // If there's only one segment, no xfade needed — just relabel it.
     const filterComplex =
       segments.length === 1
-        ? `${scaleFilters[0].replace("[s0]", "[outv]")}`
+        ? scaleFilters[0].replace("[s0]", "[outv]")
         : [...scaleFilters, ...xfadeFilters].join(";");
 
     command
@@ -75,7 +78,7 @@ export async function composeVideo(
       .complexFilter(filterComplex)
       .outputOptions([
         "-map [outv]",
-        `-map ${segments.length}:a`, // voiceover is the last input
+        `-map ${segments.length}:a`,
         "-c:v libx264",
         "-preset ultrafast",
         "-c:a aac",
@@ -90,14 +93,14 @@ export async function composeVideo(
 }
 
 function buildScaleAndCaptionFilter(
-  seg: { caption: string },
+  seg: { captionFile: string },
   index: number,
   fontPath: string
 ): string {
-  const caption = escapeForDrawtext(seg.caption.slice(0, 140));
   const drawtext =
-    `drawtext=fontfile='${fontPath}':text='${caption}':fontcolor=white:fontsize=42:` +
-    `box=1:boxcolor=black@0.6:boxborderw=20:x=(w-text_w)/2:y=h-220:line_spacing=8`;
+    `drawtext=fontfile='${escapePath(fontPath)}':textfile='${escapePath(seg.captionFile)}':` +
+    `fontcolor=white:fontsize=42:box=1:boxcolor=black@0.6:boxborderw=20:` +
+    `x=(w-text_w)/2:y=h-220:line_spacing=8`;
 
   return (
     `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
@@ -105,9 +108,8 @@ function buildScaleAndCaptionFilter(
   );
 }
 
-function escapeForDrawtext(s: string): string {
-  return s
-    .replace(/\\/g, "\\\\\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'");
+// Only file paths pass through this — never arbitrary caption text — so
+// this only needs to handle the characters that can appear in a path.
+function escapePath(p: string): string {
+  return p.replace(/\\/g, "\\\\\\\\").replace(/:/g, "\\:");
 }
