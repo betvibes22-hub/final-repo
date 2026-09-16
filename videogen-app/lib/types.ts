@@ -14,13 +14,22 @@ export interface GenerateRequest {
   voicePace?: VoicePace;
 }
 
+export interface VisualAsset {
+  path: string;
+  // Lets compose.ts pick the right ffmpeg input handling — video clips
+  // need to loop/trim as video, static images need the old -loop 1
+  // image behavior. Falls back to "image" (Pexels photo, or a plain
+  // placeholder) only when no real video match was found for a scene.
+  type: "video" | "image";
+}
+
 export interface Scene {
   index: number;
   text: string;
   startSeconds: number;
   durationSeconds: number;
   visualPrompt: string;
-  visualAssetPaths?: string[];
+  visualAssetPaths?: VisualAsset[];
 }
 
 export interface Script {
