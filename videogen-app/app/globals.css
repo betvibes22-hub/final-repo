@@ -1,9 +1,35 @@
+:root {
+  --gold: #d4af37;
+  --text: #f2eee3;
+  --muted: #b8b2a0;
+}
+
 * {
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
-  background: #ffffff;
-  color: #111111;
+  padding: 0;
+}
+
+body {
+  color: var(--text);
+  font-family: sans-serif;
+  min-height: 100vh;
+
+  /* Dark, high-tech surreal diamond background — generated free via
+     Pollinations.ai, no signup, no key. Dark overlay layered on top so
+     text stays readable over the image. */
+  background-image:
+    linear-gradient(rgba(5, 4, 8, 0.82), rgba(5, 4, 8, 0.88)),
+    url("https://image.pollinations.ai/prompt/dark%20high-tech%20surreal%20diamonds%2C%20black%20obsidian%20background%2C%20glowing%20cyan%20and%20gold%20light%2C%20luxury%2C%20futuristic%2C%20cinematic%2C%20ultra%20detailed?width=1920&height=1080&seed=8171&nologo=true");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+a {
+  color: var(--gold);
 }
