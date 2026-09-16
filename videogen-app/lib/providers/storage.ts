@@ -75,7 +75,11 @@ export async function uploadAudioPreview(localPath: string): Promise<string> {
 
   const fileBuffer = fs.readFileSync(localPath);
   const form = new FormData();
-  form.append("file", new Blob([fileBuffer]), "voiceover.mp3");
+  // Filename extension must match the actual audio format (Piper
+  // produces .wav, the VoiceRSS fallback produces .mp3) so Cloudinary
+  // and the browser's <audio> player decode it correctly.
+  const ext = localPath.toLowerCase().endsWith(".wav") ? "wav" : "mp3";
+  form.append("file", new Blob([fileBuffer]), `voiceover.${ext}`);
   form.append("api_key", apiKey);
   form.append("timestamp", String(timestamp));
   form.append("signature", signature);
