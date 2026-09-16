@@ -63,7 +63,7 @@ async function runPipeline(jobId: string) {
       "generating_visuals",
       `Selecting footage — scene ${scene.index + 1} of ${script.scenes.length}...`
     );
-    scene.visualAssetPaths = await generateVisualsForScene(scene, jobDir);
+    scene.visualAssetPaths = await generateVisualsForScene(scene, jobDir, job.request.style);
   }
   updateJob(jobId, { script });
 
