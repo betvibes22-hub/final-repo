@@ -52,6 +52,14 @@ export type JobStatus =
   | "done"
   | "failed";
 
+export interface ActivityLogEntry {
+  ts: number;
+  text: string;
+  // Which external service this line is about, so the frontend can
+  // group/badge entries by service rather than just showing a flat list.
+  service: "groq" | "tavily" | "piper" | "voicerss" | "pixabay" | "pexels" | "ffmpeg" | "cloudinary";
+}
+
 export interface Job {
   id: string;
   status: JobStatus;
@@ -65,4 +73,7 @@ export interface Job {
   createdAt: number;
   updatedAt: number;
   progressNote?: string;
+  // Granular, timestamped log of every real external-service call made
+  // for this video — drives the detailed sidebar checklist.
+  activityLog: ActivityLogEntry[];
 }
