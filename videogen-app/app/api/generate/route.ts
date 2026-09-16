@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import os from "os";
 import { GenerateRequest } from "../../../lib/types";
-import { createJob, setJobStatus, updateJob, setJobFailed, getJob, waitForApproval } from "../../../lib/jobs";
+import { createJob, setJobStatus, updateJob, setJobFailed, getJob, waitForApproval, logActivity } from "../../../lib/jobs";
 import { generateScriptGroq } from "../../../lib/providers/script-groq";
 import { buildScriptFromCustomText } from "../../../lib/providers/customScript";
 import { generateVoiceover } from "../../../lib/providers/tts";
@@ -51,7 +51,7 @@ async function runPipeline(jobId: string) {
     script =
       job.request.scriptMode === "custom"
         ? buildScriptFromCustomText(job.request.customScript!, job.request)
-        : await generateScriptGroq(job.request);
+        : await generateScriptGroq(job.request, (text, service) => logActivity(jobId, text, service));
     updateJob(jobId, { script });
 
     const decision = await waitForApproval(jobId, "script");
@@ -63,11 +63,17 @@ async function runPipeline(jobId: string) {
   let voiceoverPreviewUrl: string;
   while (true) {
     setJobStatus(jobId, "generating_voiceover", "Recording the voiceover...");
-    voiceoverPath = await generateVoiceover(script.fullNarrationText, jobDir, {
-      gender: job.request.voiceGender,
-      voiceName: job.request.voiceName,
-      pace: job.request.voicePace,
-    });
+    voiceoverPath = await generateVoiceover(
+      script.fullNarrationText,
+      jobDir,
+      {
+        gender: job.request.voiceGender,
+        voiceName: job.request.voiceName,
+        pace: job.request.voicePace,
+      },
+      (text, service) => logActivity(jobId, text, service)
+    );
+    logActivity(jobId, "Cloudinary: uploading voiceover preview", "cloudinary");
     voiceoverPreviewUrl = await uploadAudioPreview(voiceoverPath);
     updateJob(jobId, { voiceoverPath, voiceoverPreviewUrl });
 
@@ -83,17 +89,26 @@ async function runPipeline(jobId: string) {
       "generating_visuals",
       `Selecting footage — scene ${scene.index + 1} of ${script.scenes.length}...`
     );
-    scene.visualAssetPaths = await generateVisualsForScene(scene, jobDir, job.request.style);
+    scene.visualAssetPaths = await generateVisualsForScene(
+      scene,
+      jobDir,
+      job.request.style,
+      (text, service) => logActivity(jobId, text, service)
+    );
   }
   updateJob(jobId, { script });
 
   // ── Compose + upload ────────────────────────────────────
   setJobStatus(jobId, "composing", "Editing the final cut...");
   const localOutputPath = path.join(jobDir, "final.mp4");
-  await composeVideo(script, voiceoverPath, localOutputPath);
+  await composeVideo(script, voiceoverPath, localOutputPath, (text) =>
+    logActivity(jobId, text, "ffmpeg")
+  );
 
   setJobStatus(jobId, "uploading", "Saving your video...");
-  const videoUrl = await uploadVideo(localOutputPath, script.title);
+  const videoUrl = await uploadVideo(localOutputPath, script.title, (text) =>
+    logActivity(jobId, text, "cloudinary")
+  );
 
   updateJob(jobId, { status: "done", outputVideoPath: videoUrl, progressNote: "Done!" });
 }
