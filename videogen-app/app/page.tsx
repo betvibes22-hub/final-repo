@@ -379,6 +379,32 @@ export default function Home() {
           ))}
         </aside>
       </div>
+
+      <footer style={{ marginTop: 64, paddingTop: 32, borderTop: "1px solid #eee", fontFamily: "sans-serif" }}>
+        <h2 style={{ fontSize: 18, marginBottom: 20 }}>What powers this site</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
+          {POWERED_BY.map((item) => (
+            <div key={item.name}>
+              <p style={{ fontWeight: 600, margin: "0 0 4px" }}>{item.name}</p>
+              <p style={{ fontSize: 13, color: "#888", margin: 0, lineHeight: 1.5 }}>{item.does}</p>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: "#aaa", marginTop: 28 }}>
+          Every tool here runs on a free tier — no subscriptions, no paid plans.
+        </p>
+      </footer>
     </div>
   );
 }
+
+const POWERED_BY = [
+  { name: "Groq", does: "Writes the script — a fast, free AI language model." },
+  { name: "Pollinations.ai", does: "Generates the AI illustrations matching your chosen style." },
+  { name: "Pexels", does: "Backup source for matching photos if AI generation doesn't return a good result." },
+  { name: "VoiceRSS", does: "Turns the script into spoken narration." },
+  { name: "FFmpeg", does: "Open-source engine that edits everything together — captions, transitions, timing." },
+  { name: "Cloudinary", does: "Hosts and stores every finished video, and powers your past-videos library." },
+  { name: "Tavily", does: "Optional — pulls real current search trends into the script when connected." },
+  { name: "YouTube Data API", does: "Optional — powers the trending Shorts explore panel when connected." },
+];
