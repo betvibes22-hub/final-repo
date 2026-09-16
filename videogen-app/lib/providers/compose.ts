@@ -1,15 +1,19 @@
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import { Script } from "../types";
+import { Script, VisualAsset } from "../types";
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
 /**
- * Stitches every scene's images + the full voiceover MP3 into one MP4.
- * Deliberately simple: scale/crop + straight concat, no captions, no
- * crossfade transitions. Both were tried together and both attempts
- * failed with a generic ffmpeg filter-init error — reverted to this
- * known-working baseline rather than guess further. Reintroduce
+ * Stitches every scene's visual asset(s) + the full voiceover MP3 into
+ * one MP4. Each segment can be either a real video clip (Pixabay) or a
+ * static image (a fallback when no video match existed) — they need
+ * different ffmpeg input handling, so each segment carries its type.
+ *
+ * Deliberately simple otherwise: scale/crop + straight concat, no
+ * captions, no crossfade transitions. Both were tried together once
+ * before and failed with a generic ffmpeg filter-init error — reverted
+ * to this known-working baseline rather than guess further. Reintroduce
  * captions and crossfades ONE AT A TIME, each verified working on its
  * own, before combining them again.
  */
@@ -21,20 +25,27 @@ export async function composeVideo(
   return new Promise((resolve, reject) => {
     const command = ffmpeg();
 
-    const segments: { path: string; duration: number }[] = [];
+    const segments: { asset: VisualAsset; duration: number }[] = [];
     for (const scene of script.scenes) {
-      const images = scene.visualAssetPaths ?? [];
-      if (images.length === 0) {
+      const assets = scene.visualAssetPaths ?? [];
+      if (assets.length === 0) {
         throw new Error(`Scene ${scene.index} has no visualAssetPaths — generate visuals first.`);
       }
-      const perImage = scene.durationSeconds / images.length;
-      for (const imagePath of images) {
-        segments.push({ path: imagePath, duration: perImage });
+      const perAsset = scene.durationSeconds / assets.length;
+      for (const asset of assets) {
+        segments.push({ asset, duration: perAsset });
       }
     }
 
     for (const seg of segments) {
-      command.input(seg.path).inputOptions(["-loop 1", `-t ${seg.duration}`]);
+      // Video clips: loop indefinitely then trim to the exact segment
+      // duration — works whether the source clip is shorter or longer
+      // than needed. Images: the classic "-loop 1" still image idiom.
+      const inputOptions =
+        seg.asset.type === "video"
+          ? ["-stream_loop -1", `-t ${seg.duration}`]
+          : ["-loop 1", `-t ${seg.duration}`];
+      command.input(seg.asset.path).inputOptions(inputOptions);
     }
 
     const perSegmentFilters = segments.map((_, i) => buildSegmentFilter(i));
