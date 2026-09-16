@@ -2,21 +2,24 @@ import fs from "fs";
 import path from "path";
 import { Scene, VideoStyle, VisualAsset } from "../types";
 
+// Multiple clips cut between per scene, matching the faster short-form
+// pace the old AI-image approach had (3 images/scene) — a single long
+// static shot per scene read as slow/boring, so we cut more often even
+// though each clip already has its own motion.
+const CLIPS_PER_SCENE = 3;
+
 /**
- * Generates the visual asset(s) for one scene — real stock video by
- * default, so cuts between scenes show actual motion footage instead
- * of static images.
+ * Generates the visual assets for one scene — real stock video clips
+ * by default, cut between every couple seconds so it feels edited,
+ * short-form-paced, not a single static shot per beat.
  *
  * Primary source: Pixabay's video API — genuinely free (just a signup
  * key, no card), CC-style commercial-use license, no attribution
- * required. One matched clip per scene is enough since the clip
- * already has its own motion (unlike the old static-photo approach,
- * which needed several photos per scene to feel edited).
+ * required.
  *
- * Falls back to a Pixabay photo (same free key, same account) if no
- * video result matches the scene, then to a Pexels photo, then to a
- * plain placeholder frame as a last resort — so a scene always gets
- * *something*, even if real footage wasn't available for that topic.
+ * Falls back to Pixabay photos (same free key) if there aren't enough
+ * video matches, then Pexels photos, then a placeholder — so a scene
+ * always gets something even if real footage wasn't available.
  */
 export async function generateVisualsForScene(
   scene: Scene,
@@ -27,27 +30,27 @@ export async function generateVisualsForScene(
 
   if (pixabayKey) {
     try {
-      const asset = await fetchPixabayVideo(scene, outDir, pixabayKey);
-      if (asset) return [asset];
+      const assets = await fetchPixabayVideos(scene, outDir, pixabayKey, CLIPS_PER_SCENE);
+      if (assets.length > 0) return assets;
     } catch (err) {
-      console.error(`Pixabay video failed for scene ${scene.index}, trying Pixabay photo:`, err);
+      console.error(`Pixabay video failed for scene ${scene.index}, trying Pixabay photos:`, err);
     }
 
     try {
-      const asset = await fetchPixabayPhoto(scene, outDir, pixabayKey);
-      if (asset) return [asset];
+      const assets = await fetchPixabayPhotos(scene, outDir, pixabayKey, CLIPS_PER_SCENE);
+      if (assets.length > 0) return assets;
     } catch (err) {
-      console.error(`Pixabay photo failed for scene ${scene.index}, trying Pexels:`, err);
+      console.error(`Pixabay photos failed for scene ${scene.index}, trying Pexels:`, err);
     }
   }
 
   const pexelsKey = process.env.PEXELS_API_KEY;
   if (pexelsKey) {
     try {
-      const asset = await fetchPexelsPhoto(scene, outDir, pexelsKey);
-      if (asset) return [asset];
+      const assets = await fetchPexelsPhotos(scene, outDir, pexelsKey, CLIPS_PER_SCENE);
+      if (assets.length > 0) return assets;
     } catch (err) {
-      console.error(`Pexels photo failed for scene ${scene.index}, falling back to placeholder:`, err);
+      console.error(`Pexels photos failed for scene ${scene.index}, falling back to placeholder:`, err);
     }
   }
 
@@ -58,16 +61,17 @@ function searchQuery(scene: Scene): string {
   return scene.visualPrompt.split(",")[0].split(".")[0].trim().slice(0, 60);
 }
 
-/** Searches Pixabay's video library and downloads the best-matching clip. */
-async function fetchPixabayVideo(
+/** Searches Pixabay's video library and downloads up to `count` matching clips. */
+async function fetchPixabayVideos(
   scene: Scene,
   outDir: string,
-  apiKey: string
-): Promise<VisualAsset | null> {
+  apiKey: string,
+  count: number
+): Promise<VisualAsset[]> {
   const query = searchQuery(scene);
   const url =
     `https://pixabay.com/api/videos/?key=${apiKey}` +
-    `&q=${encodeURIComponent(query)}&per_page=3&safesearch=true`;
+    `&q=${encodeURIComponent(query)}&per_page=${Math.max(count, 3)}&safesearch=true`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Pixabay video search failed: ${res.status}`);
@@ -76,82 +80,100 @@ async function fetchPixabayVideo(
   const hits = (data.hits ?? []) as {
     videos: Record<string, { url: string; width: number; height: number }>;
   }[];
-  if (hits.length === 0) return null;
-
-  // "medium" balances real quality against download size on a
-  // resource-limited free host — "large" is often 1080p+ and risks
-  // the same kind of memory pressure that caused the zoompan OOM crash.
-  const variant = hits[0].videos.medium || hits[0].videos.small || hits[0].videos.large;
-  if (!variant) return null;
-
-  const videoRes = await fetch(variant.url);
-  if (!videoRes.ok) throw new Error(`Pixabay video download failed: ${videoRes.status}`);
+  if (hits.length === 0) return [];
 
   fs.mkdirSync(outDir, { recursive: true });
-  const buffer = Buffer.from(await videoRes.arrayBuffer());
-  const outPath = path.join(outDir, `scene-${scene.index}-0.mp4`);
-  fs.writeFileSync(outPath, buffer);
+  const assets: VisualAsset[] = [];
 
-  return { path: outPath, type: "video" };
+  for (let i = 0; i < Math.min(count, hits.length); i++) {
+    // "medium" balances real quality against download size on a
+    // resource-limited free host — "large" is often 1080p+ and risks
+    // the same kind of memory pressure that caused the zoompan OOM crash.
+    const variant = hits[i].videos.medium || hits[i].videos.small || hits[i].videos.large;
+    if (!variant) continue;
+
+    const videoRes = await fetch(variant.url);
+    if (!videoRes.ok) continue;
+
+    const buffer = Buffer.from(await videoRes.arrayBuffer());
+    const outPath = path.join(outDir, `scene-${scene.index}-${i}.mp4`);
+    fs.writeFileSync(outPath, buffer);
+    assets.push({ path: outPath, type: "video" });
+  }
+
+  return assets;
 }
 
-/** Falls back to a still photo from Pixabay's photo library. */
-async function fetchPixabayPhoto(
+/** Falls back to still photos from Pixabay's photo library. */
+async function fetchPixabayPhotos(
   scene: Scene,
   outDir: string,
-  apiKey: string
-): Promise<VisualAsset | null> {
+  apiKey: string,
+  count: number
+): Promise<VisualAsset[]> {
   const query = searchQuery(scene);
   const url =
     `https://pixabay.com/api/?key=${apiKey}` +
-    `&q=${encodeURIComponent(query)}&image_type=photo&orientation=horizontal&safesearch=true&per_page=3`;
+    `&q=${encodeURIComponent(query)}&image_type=photo&orientation=horizontal&safesearch=true&per_page=${Math.max(count, 3)}`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Pixabay photo search failed: ${res.status}`);
 
   const data = await res.json();
   const hits = (data.hits ?? []) as { largeImageURL?: string; webformatURL: string }[];
-  if (hits.length === 0) return null;
-
-  const imageUrl = hits[0].largeImageURL || hits[0].webformatURL;
-  const imageRes = await fetch(imageUrl);
-  if (!imageRes.ok) throw new Error(`Pixabay photo download failed: ${imageRes.status}`);
+  if (hits.length === 0) return [];
 
   fs.mkdirSync(outDir, { recursive: true });
-  const buffer = Buffer.from(await imageRes.arrayBuffer());
-  const outPath = path.join(outDir, `scene-${scene.index}-0.jpg`);
-  fs.writeFileSync(outPath, buffer);
+  const assets: VisualAsset[] = [];
 
-  return { path: outPath, type: "image" };
+  for (let i = 0; i < Math.min(count, hits.length); i++) {
+    const imageUrl = hits[i].largeImageURL || hits[i].webformatURL;
+    const imageRes = await fetch(imageUrl);
+    if (!imageRes.ok) continue;
+
+    const buffer = Buffer.from(await imageRes.arrayBuffer());
+    const outPath = path.join(outDir, `scene-${scene.index}-${i}.jpg`);
+    fs.writeFileSync(outPath, buffer);
+    assets.push({ path: outPath, type: "image" });
+  }
+
+  return assets;
 }
 
-/** Last-resort photo fallback if Pixabay has no key set or no match at all. */
-async function fetchPexelsPhoto(
+/** Last-resort photo fallback if Pixabay has no key set or no matches at all. */
+async function fetchPexelsPhotos(
   scene: Scene,
   outDir: string,
-  apiKey: string
-): Promise<VisualAsset | null> {
+  apiKey: string,
+  count: number
+): Promise<VisualAsset[]> {
   const query = searchQuery(scene);
 
   const searchRes = await fetch(
-    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`,
+    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count}&orientation=landscape`,
     { headers: { Authorization: apiKey } }
   );
   if (!searchRes.ok) throw new Error(`Pexels photo search failed: ${searchRes.status}`);
 
   const searchData = await searchRes.json();
   const photos = (searchData.photos ?? []) as { src: Record<string, string> }[];
-  if (photos.length === 0) return null;
-
-  const imageUrl: string = photos[0].src.large || photos[0].src.medium || photos[0].src.original;
-  const imageRes = await fetch(imageUrl);
-  const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+  if (photos.length === 0) return [];
 
   fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, `scene-${scene.index}-0.jpg`);
-  fs.writeFileSync(outPath, imageBuffer);
+  const assets: VisualAsset[] = [];
 
-  return { path: outPath, type: "image" };
+  for (let i = 0; i < photos.length; i++) {
+    const imageUrl: string = photos[i].src.large || photos[i].src.medium || photos[i].src.original;
+    const imageRes = await fetch(imageUrl);
+    if (!imageRes.ok) continue;
+
+    const buffer = Buffer.from(await imageRes.arrayBuffer());
+    const outPath = path.join(outDir, `scene-${scene.index}-${i}.jpg`);
+    fs.writeFileSync(outPath, buffer);
+    assets.push({ path: outPath, type: "image" });
+  }
+
+  return assets;
 }
 
 function generatePlaceholderFrame(scene: Scene, outDir: string): VisualAsset {
