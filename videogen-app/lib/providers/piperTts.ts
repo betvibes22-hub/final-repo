@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { execFileSync, execSync } from "child_process";
+import { downloadToFile } from "./download";
 
 /**
  * Self-hosted, open-source TTS via Piper (MIT license) — chosen after
@@ -102,12 +103,24 @@ async function ensureVoiceModel(def: PiperVoiceDef): Promise<string> {
   const onnxUrl = `${base}/${def.key}.onnx`;
   const jsonUrl = `${base}/${def.key}.onnx.json`;
 
-  const [onnxRes, jsonRes] = await Promise.all([fetch(onnxUrl), fetch(jsonUrl)]);
-  if (!onnxRes.ok) throw new Error(`Piper model download failed: ${onnxRes.status} ${onnxUrl}`);
-  if (!jsonRes.ok) throw new Error(`Piper model config download failed: ${jsonRes.status} ${jsonUrl}`);
-
-  fs.writeFileSync(onnxPath, Buffer.from(await onnxRes.arrayBuffer()));
-  fs.writeFileSync(jsonPath, Buffer.from(await jsonRes.arrayBuffer()));
+  // Download to .tmp then rename into place — these files (the onnx model
+  // is 25-65MB) are checked into a persistent cache dir and reused across
+  // requests, so a connection that drops mid-download (as happened once
+  // in production) must never leave a partial file sitting at the real
+  // path, or every future request would treat it as a valid cached model
+  // and fail synthesis on a truncated file.
+  const onnxTmp = `${onnxPath}.tmp`;
+  const jsonTmp = `${jsonPath}.tmp`;
+  try {
+    await Promise.all([downloadToFile(onnxUrl, onnxTmp), downloadToFile(jsonUrl, jsonTmp)]);
+    fs.renameSync(onnxTmp, onnxPath);
+    fs.renameSync(jsonTmp, jsonPath);
+  } catch (err) {
+    for (const tmp of [onnxTmp, jsonTmp]) {
+      if (fs.existsSync(tmp)) fs.rmSync(tmp, { force: true });
+    }
+    throw err;
+  }
 
   return onnxPath;
 }
