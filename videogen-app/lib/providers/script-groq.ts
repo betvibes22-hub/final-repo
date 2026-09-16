@@ -21,15 +21,30 @@ const VIBE_INSTRUCTIONS: Record<ScriptVibe, string> = {
  * material to expand/polish into full scenes, rather than writing from
  * scratch.
  */
-export async function generateScriptGroq(req: GenerateRequest): Promise<Script> {
+export async function generateScriptGroq(
+  req: GenerateRequest,
+  onLog?: (text: string, service: "groq" | "tavily") => void
+): Promise<Script> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error("GROQ_API_KEY is not set. Get a free key at console.groq.com/keys");
   }
 
+  if (process.env.TAVILY_API_KEY) {
+    onLog?.(`Tavily: pulling current search trends for "${req.topic}"`, "tavily");
+  }
   const trendTerms = await getTrendContext(req.topic);
+  if (trendTerms.length > 0) {
+    onLog?.(`Tavily: found ${trendTerms.length} trend term(s) to weave into the script`, "tavily");
+  }
+
   const targetWordCount = Math.round(req.targetLengthSeconds * 2.5);
   const sceneCount = Math.max(3, Math.round(req.targetLengthSeconds / 15));
+  const vibeLabel = req.vibe ?? "documentary";
+  onLog?.(
+    `Groq: drafting ${sceneCount}-scene script (~${targetWordCount} words, ${vibeLabel} vibe)`,
+    "groq"
+  );
 
   const trendBlock =
     trendTerms.length > 0
@@ -75,6 +90,8 @@ Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${
   const text = data.choices?.[0]?.message?.content ?? "";
   const parsed: { title: string; scenes: { text: string; visualPrompt: string }[] } =
     JSON.parse(text);
+
+  onLog?.(`Groq: script drafted — "${parsed.title}" (${parsed.scenes.length} scenes)`, "groq");
 
   const perSceneSeconds = req.targetLengthSeconds / parsed.scenes.length;
   const scenes: Scene[] = parsed.scenes.map((s, i) => ({
