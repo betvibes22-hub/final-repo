@@ -18,13 +18,15 @@ export function listAvailableVoices() {
 export async function generateVoiceover(
   text: string,
   outDir: string,
-  options: VoiceOptions = {}
+  options: VoiceOptions = {},
+  onLog?: (text: string, service: "piper" | "voicerss") => void
 ): Promise<string> {
   try {
-    return await generateVoiceoverPiper(text, outDir, options);
+    return await generateVoiceoverPiper(text, outDir, options, (t) => onLog?.(t, "piper"));
   } catch (err) {
     console.error("Piper TTS failed, falling back to VoiceRSS:", err);
-    return await generateVoiceoverVoiceRSS(text, outDir, options);
+    onLog?.("Piper failed on this run, falling back to VoiceRSS", "voicerss");
+    return await generateVoiceoverVoiceRSS(text, outDir, options, onLog);
   }
 }
 
@@ -42,7 +44,8 @@ const VOICERSS_PACE_RATE: Record<VoicePace, number> = {
 async function generateVoiceoverVoiceRSS(
   text: string,
   outDir: string,
-  options: VoiceOptions = {}
+  options: VoiceOptions = {},
+  onLog?: (text: string, service: "piper" | "voicerss") => void
 ): Promise<string> {
   const apiKey = process.env.VOICERSS_API_KEY;
   if (!apiKey) {
@@ -55,6 +58,8 @@ async function generateVoiceoverVoiceRSS(
   const validNames = VOICERSS_VOICES_BY_GENDER[gender];
   const voiceName = validNames[0]; // Piper voice names don't map to VoiceRSS's catalog
   const rate = VOICERSS_PACE_RATE[options.pace ?? "normal"];
+
+  onLog?.(`VoiceRSS: synthesizing narration (voice: ${voiceName})`, "voicerss");
 
   const params = new URLSearchParams({
     key: apiKey,
