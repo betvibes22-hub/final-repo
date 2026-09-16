@@ -1,22 +1,26 @@
 export type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
-
 export type ScriptMode = "ai" | "custom" | "hybrid";
+export type VoiceGender = "female" | "male";
+export type VoicePace = "slower" | "normal" | "faster";
 
 export interface GenerateRequest {
   topic: string;
   style: VideoStyle;
-  targetLengthSeconds: number; // e.g. 60, 180, 300
-  scriptMode?: ScriptMode;     // "ai" (default), "custom", or "hybrid"
-  customScript?: string;       // user-provided script text (custom/hybrid modes)
+  targetLengthSeconds: number;
+  scriptMode?: ScriptMode;
+  customScript?: string;
+  voiceGender?: VoiceGender;
+  voiceName?: string;
+  voicePace?: VoicePace;
 }
 
 export interface Scene {
   index: number;
-  text: string;          // the narration line(s) for this scene
-  startSeconds: number;  // where this scene starts in the final timeline
+  text: string;
+  startSeconds: number;
   durationSeconds: number;
-  visualPrompt: string;  // what to generate visually for this scene
-  visualAssetPaths?: string[]; // multiple images per scene, filled in once generated
+  visualPrompt: string;
+  visualAssetPaths?: string[];
 }
 
 export interface Script {
@@ -45,5 +49,5 @@ export interface Job {
   error?: string;
   createdAt: number;
   updatedAt: number;
-  progressNote?: string; // human-readable "what's happening right now"
+  progressNote?: string;
 }
