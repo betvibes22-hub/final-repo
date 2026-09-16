@@ -3,12 +3,12 @@ import { getTrendContext } from "./trends";
 
 /**
  * Groq version of script generation — genuinely free, no credit card
- * required (console.groq.com). Uses an OpenAI-compatible endpoint, so
- * this looks almost identical to the OpenAI provider, just pointed at
- * Groq's API with a Llama model instead.
+ * required (console.groq.com). Uses an OpenAI-compatible endpoint.
  *
- * Free tier limits: 30 requests/min, 14,400 requests/day — far more
- * than enough for personal use of this app.
+ * Supports hybrid mode: if req.customScript is set alongside
+ * scriptMode "hybrid", the user's draft is handed to the model as
+ * material to expand/polish into full scenes, rather than writing from
+ * scratch.
  */
 export async function generateScriptGroq(req: GenerateRequest): Promise<Script> {
   const apiKey = process.env.GROQ_API_KEY;
@@ -25,10 +25,15 @@ export async function generateScriptGroq(req: GenerateRequest): Promise<Script> 
       ? `\n\nReal current search interest around this topic — weave in whichever genuinely fit:\n${trendTerms.map((t) => `- ${t}`).join("\n")}`
       : "";
 
+  const hybridBlock =
+    req.scriptMode === "hybrid" && req.customScript?.trim()
+      ? `\n\nThe user has already written a draft — expand and polish THIS into the full script rather than writing something new. Keep their ideas, wording, and voice; fill gaps and split it into scenes:\n"""\n${req.customScript.trim()}\n"""`
+      : "";
+
   const systemPrompt = `You write scripts for ${req.style} explainer/story videos.
 Output ONLY valid JSON matching this shape, no other text:
 {"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
-Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}`;
+Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}`;
 
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
