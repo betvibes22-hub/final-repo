@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "VideoGen",
+  title: "Moh Personal Videos Production",
   description: "Script-to-video generator",
 };
 
