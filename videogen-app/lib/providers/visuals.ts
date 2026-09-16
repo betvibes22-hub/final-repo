@@ -2,70 +2,75 @@ import fs from "fs";
 import path from "path";
 import { Scene } from "../types";
 
+const PHOTOS_PER_SCENE = 3;
+
 /**
- * Generates the visual asset for one scene.
+ * Generates the visual assets for one scene — now MULTIPLE photos per
+ * scene (cut between them every few seconds) instead of one static photo
+ * held for the whole duration. Gives real editing rhythm without the
+ * memory cost of ffmpeg's zoompan effect, which crashed the free-tier
+ * server earlier.
  *
- * Uses matched Pexels PHOTOS (not video clips) — compose.ts applies a
- * Ken Burns pan/zoom to these so they still feel like motion, not a dead
- * still. Video clips were tried initially but downloading full HD video
- * files for every scene pushed memory usage past Render's free-tier
- * 512MB limit and crashed the server mid-render. Photos are far lighter
- * and keep the whole pipeline reliable on the free tier.
+ * Returns an array of image paths, in the order they should play.
  */
-export async function generateVisualForScene(
+export async function generateVisualsForScene(
   scene: Scene,
   outDir: string
-): Promise<string> {
+): Promise<string[]> {
   const pexelsKey = process.env.PEXELS_API_KEY;
 
   if (pexelsKey) {
     try {
-      return await generateMatchedPhotoFrame(scene, outDir, pexelsKey);
+      return await generateMatchedPhotos(scene, outDir, pexelsKey);
     } catch (err) {
-      console.error(`Pexels photo failed for scene ${scene.index}, falling back:`, err);
+      console.error(`Pexels photos failed for scene ${scene.index}, falling back:`, err);
     }
   }
 
-  return generatePlaceholderFrame(scene, outDir);
+  return [generatePlaceholderFrame(scene, outDir)];
 }
 
 function searchQuery(scene: Scene): string {
   return scene.visualPrompt.split(",")[0].split(".")[0].trim().slice(0, 60);
 }
 
-async function generateMatchedPhotoFrame(
+async function generateMatchedPhotos(
   scene: Scene,
   outDir: string,
   apiKey: string
-): Promise<string> {
+): Promise<string[]> {
   const query = searchQuery(scene);
 
   const searchRes = await fetch(
-    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`,
+    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${PHOTOS_PER_SCENE}&orientation=landscape`,
     { headers: { Authorization: apiKey } }
   );
 
   if (!searchRes.ok) throw new Error(`Pexels photo search failed: ${searchRes.status}`);
 
   const searchData = await searchRes.json();
-  const photo = searchData.photos?.[0];
-  if (!photo) throw new Error(`No Pexels photo results for query "${query}"`);
-
-  // "large" instead of "large2x" — smaller file, less memory, still plenty
-  // sharp once scaled down to 1920x1080 in compose.ts.
-  const imageUrl: string = photo.src.large || photo.src.medium || photo.src.original;
-  const imageRes = await fetch(imageUrl);
-  const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+  const photos = (searchData.photos ?? []) as { src: Record<string, string> }[];
+  if (photos.length === 0) throw new Error(`No Pexels photo results for query "${query}"`);
 
   fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, `scene-${scene.index}.jpg`);
-  fs.writeFileSync(outPath, imageBuffer);
-  return outPath;
+  const paths: string[] = [];
+
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
+    const imageUrl: string = photo.src.large || photo.src.medium || photo.src.original;
+    const imageRes = await fetch(imageUrl);
+    const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
+    const outPath = path.join(outDir, `scene-${scene.index}-${i}.jpg`);
+    fs.writeFileSync(outPath, imageBuffer);
+    paths.push(outPath);
+  }
+
+  return paths;
 }
 
-async function generatePlaceholderFrame(scene: Scene, outDir: string): Promise<string> {
+function generatePlaceholderFrame(scene: Scene, outDir: string): string {
   fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, `scene-${scene.index}.svg`);
+  const outPath = path.join(outDir, `scene-${scene.index}-0.svg`);
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
   <rect width="1920" height="1080" fill="#ffffff"/>
