@@ -4,11 +4,14 @@ import { v4 as uuid } from "uuid";
 // In-memory store. Fine for local dev and testing.
 const jobs = new Map<string, Job>();
 
+export type ApprovalDecision = "approve" | "regenerate";
+
 // Pending approval resolvers — when the pipeline hits a checkpoint, it
 // awaits a Promise whose resolve function is stashed here, keyed by
-// "jobId:stage". Hitting the approve endpoint looks it up and resolves it,
-// unblocking the paused pipeline.
-const pendingApprovals = new Map<string, () => void>();
+// "jobId:stage". Hitting the approve endpoint looks it up and resolves it
+// with the user's decision, unblocking the paused pipeline either to
+// continue (approve) or loop back and redo that stage (regenerate).
+const pendingApprovals = new Map<string, (decision: ApprovalDecision) => void>();
 
 export function createJob(request: Job["request"]): Job {
   const job: Job = {
@@ -49,7 +52,7 @@ export function setJobFailed(id: string, error: string) {
  * returned promise resolves once approveStage() is called for this
  * job+stage — the pipeline literally waits here until the user clicks.
  */
-export function waitForApproval(jobId: string, stage: string): Promise<void> {
+export function waitForApproval(jobId: string, stage: string): Promise<ApprovalDecision> {
   updateJob(jobId, {
     status: "awaiting_approval",
     awaitingStage: stage,
@@ -61,11 +64,11 @@ export function waitForApproval(jobId: string, stage: string): Promise<void> {
   });
 }
 
-export function approveStage(jobId: string, stage: string): boolean {
+export function approveStage(jobId: string, stage: string, decision: ApprovalDecision): boolean {
   const key = `${jobId}:${stage}`;
   const resolve = pendingApprovals.get(key);
   if (!resolve) return false;
   pendingApprovals.delete(key);
-  resolve();
+  resolve(decision);
   return true;
 }
