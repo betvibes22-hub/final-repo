@@ -46,9 +46,32 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "Cut! Something went wrong",
 };
 
-const VOICES_BY_GENDER: Record<VoiceGender, string[]> = {
-  female: ["Linda", "Amy", "Mary"],
-  male: ["John", "Mike"],
+// Mirrors the voice catalog in lib/providers/piperTts.ts — keep in sync.
+const VOICES_BY_GENDER: Record<VoiceGender, { key: string; name: string }[]> = {
+  female: [
+    { key: "en_US-amy-medium", name: "Amy" },
+    { key: "en_US-kathleen-low", name: "Kathleen" },
+    { key: "en_US-kristin-medium", name: "Kristin" },
+    { key: "en_US-hfc_female-medium", name: "Hannah" },
+    { key: "en_US-ljspeech-medium", name: "Lucy" },
+    { key: "en_US-lessac-medium", name: "Lessac" },
+    { key: "en_GB-jenny_dioco-medium", name: "Jenny (British)" },
+    { key: "en_GB-southern_english_female-low", name: "Southern (British)" },
+    { key: "en_GB-alba-medium", name: "Alba (Scottish)" },
+    { key: "en_GB-cori-medium", name: "Cori (British)" },
+  ],
+  male: [
+    { key: "en_US-danny-low", name: "Danny" },
+    { key: "en_US-joe-medium", name: "Joe" },
+    { key: "en_US-john-medium", name: "John" },
+    { key: "en_US-ryan-medium", name: "Ryan" },
+    { key: "en_US-norman-medium", name: "Norman" },
+    { key: "en_US-hfc_male-medium", name: "Marcus" },
+    { key: "en_US-bryce-medium", name: "Bryce" },
+    { key: "en_US-reza_ibrahim-medium", name: "Reza" },
+    { key: "en_GB-alan-medium", name: "Alan (British)" },
+    { key: "en_GB-northern_english_male-medium", name: "Northern (British)" },
+  ],
 };
 
 const TIMELINE_STEPS = [
@@ -116,7 +139,7 @@ export default function Home() {
   const [scriptMode, setScriptMode] = useState<ScriptMode>("ai");
   const [customScript, setCustomScript] = useState("");
   const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
-  const [voiceName, setVoiceName] = useState("Linda");
+  const [voiceName, setVoiceName] = useState("en_US-amy-medium");
   const [voicePace, setVoicePace] = useState<VoicePace>("normal");
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -286,7 +309,7 @@ export default function Home() {
               onChange={(e) => {
                 const g = e.target.value as VoiceGender;
                 setVoiceGender(g);
-                setVoiceName(VOICES_BY_GENDER[g][0]);
+                setVoiceName(VOICES_BY_GENDER[g][0].key);
               }}
               style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
             >
@@ -294,8 +317,8 @@ export default function Home() {
               <option value="male">Male</option>
             </select>
             <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
-              {VOICES_BY_GENDER[voiceGender].map((name) => (
-                <option key={name} value={name}>{name}</option>
+              {VOICES_BY_GENDER[voiceGender].map((v) => (
+                <option key={v.key} value={v.key}>{v.name}</option>
               ))}
             </select>
             <select value={voicePace} onChange={(e) => setVoicePace(e.target.value as VoicePace)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
