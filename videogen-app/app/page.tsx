@@ -93,6 +93,19 @@ const approveBtnStyle: React.CSSProperties = {
   marginTop: 12,
 };
 
+const disapproveBtnStyle: React.CSSProperties = {
+  padding: "10px 18px",
+  fontSize: 14,
+  fontWeight: 600,
+  background: "transparent",
+  color: "#d4af37",
+  border: "1px solid #d4af37",
+  borderRadius: 8,
+  cursor: "pointer",
+  marginTop: 12,
+  marginLeft: 10,
+};
+
 export default function Home() {
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState<VideoStyle>("whiteboard-doodle");
@@ -172,13 +185,13 @@ export default function Home() {
     }, 2000);
   }
 
-  async function handleApprove(stage: string) {
+  async function handleApprove(stage: string, decision: "approve" | "regenerate" = "approve") {
     if (!job) return;
     setApproving(true);
     await fetch("/api/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job.id, stage }),
+      body: JSON.stringify({ jobId: job.id, stage, decision }),
     });
     setApproving(false);
   }
@@ -327,9 +340,21 @@ export default function Home() {
                       <p key={i} style={{ marginBottom: 10 }}>{s.text}</p>
                     ))}
                   </div>
-                  <button onClick={() => handleApprove("script")} disabled={approving} style={approveBtnStyle}>
-                    {approving ? "..." : "Approve script & continue"}
-                  </button>
+                  <div>
+                    <button onClick={() => handleApprove("script", "approve")} disabled={approving} style={approveBtnStyle}>
+                      {approving ? "..." : "Approve script & continue"}
+                    </button>
+                    {job.request.scriptMode !== "custom" && (
+                      <button onClick={() => handleApprove("script", "regenerate")} disabled={approving} style={disapproveBtnStyle}>
+                        {approving ? "..." : "Try a different script"}
+                      </button>
+                    )}
+                  </div>
+                  {job.request.scriptMode === "custom" && (
+                    <p style={{ fontSize: 12, color: "#8b8574", marginTop: 6 }}>
+                      Custom mode uses your pasted text as-is — edit it above and resubmit to change it.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -337,9 +362,14 @@ export default function Home() {
               {job.status === "awaiting_approval" && job.awaitingStage === "voice" && job.voiceoverPreviewUrl && (
                 <div style={{ marginTop: 16 }}>
                   <audio controls style={{ width: "100%" }} src={job.voiceoverPreviewUrl} />
-                  <button onClick={() => handleApprove("voice")} disabled={approving} style={approveBtnStyle}>
-                    {approving ? "..." : "Approve voice & continue"}
-                  </button>
+                  <div>
+                    <button onClick={() => handleApprove("voice", "approve")} disabled={approving} style={approveBtnStyle}>
+                      {approving ? "..." : "Approve voice & continue"}
+                    </button>
+                    <button onClick={() => handleApprove("voice", "regenerate")} disabled={approving} style={disapproveBtnStyle}>
+                      {approving ? "..." : "Try again"}
+                    </button>
+                  </div>
                 </div>
               )}
 
