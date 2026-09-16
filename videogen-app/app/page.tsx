@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 
 type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
+type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype";
 type ScriptMode = "ai" | "custom" | "hybrid";
 type VoiceGender = "female" | "male";
 type VoicePace = "slower" | "normal" | "faster";
@@ -110,6 +111,7 @@ const disapproveBtnStyle: React.CSSProperties = {
 export default function Home() {
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState<VideoStyle>("whiteboard-doodle");
+  const [vibe, setVibe] = useState<ScriptVibe>("fun-shorts");
   const [lengthSeconds, setLengthSeconds] = useState(60);
   const [scriptMode, setScriptMode] = useState<ScriptMode>("ai");
   const [customScript, setCustomScript] = useState("");
@@ -153,6 +155,7 @@ export default function Home() {
       body: JSON.stringify({
         topic,
         style,
+        vibe,
         targetLengthSeconds: lengthSeconds,
         scriptMode,
         customScript: scriptMode === "ai" ? undefined : customScript,
@@ -260,6 +263,14 @@ export default function Home() {
               />
             </>
           )}
+
+          <label style={labelStyle}>Vibe</label>
+          <select value={vibe} onChange={(e) => setVibe(e.target.value as ScriptVibe)} style={inputStyle}>
+            <option value="fun-shorts">Fun / Casual (YouTube Shorts energy)</option>
+            <option value="storytime">Storytime / Relatable</option>
+            <option value="hype">Hype / High-energy hook</option>
+            <option value="documentary">Documentary / Serious</option>
+          </select>
 
           <label style={labelStyle}>Style</label>
           <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)} style={inputStyle}>
