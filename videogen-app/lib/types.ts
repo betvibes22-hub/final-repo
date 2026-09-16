@@ -1,9 +1,13 @@
 export type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
 
+export type ScriptMode = "ai" | "custom" | "hybrid";
+
 export interface GenerateRequest {
   topic: string;
   style: VideoStyle;
   targetLengthSeconds: number; // e.g. 60, 180, 300
+  scriptMode?: ScriptMode;     // "ai" (default), "custom", or "hybrid"
+  customScript?: string;       // user-provided script text (custom/hybrid modes)
 }
 
 export interface Scene {
@@ -12,7 +16,7 @@ export interface Scene {
   startSeconds: number;  // where this scene starts in the final timeline
   durationSeconds: number;
   visualPrompt: string;  // what to generate visually for this scene
-  visualAssetPath?: string; // filled in once generated
+  visualAssetPaths?: string[]; // multiple images per scene, filled in once generated
 }
 
 export interface Script {
