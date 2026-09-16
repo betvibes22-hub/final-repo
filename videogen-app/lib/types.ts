@@ -3,9 +3,12 @@ export type ScriptMode = "ai" | "custom" | "hybrid";
 export type VoiceGender = "female" | "male";
 export type VoicePace = "slower" | "normal" | "faster";
 
+export type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype";
+
 export interface GenerateRequest {
   topic: string;
   style: VideoStyle;
+  vibe?: ScriptVibe;
   targetLengthSeconds: number;
   scriptMode?: ScriptMode;
   customScript?: string;
