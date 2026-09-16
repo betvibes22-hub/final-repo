@@ -5,6 +5,17 @@ import { Script, Scene } from "../types";
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
+/**
+ * Stitches per-scene visual assets + the full voiceover MP3 into one MP4.
+ *
+ * - Real video clips (from Pexels) play as-is, trimmed to the scene's
+ *   duration — genuine motion, no extra processing needed.
+ * - Still photos/placeholders get a Ken Burns pan/zoom applied so they
+ *   don't sit dead-still on screen — this alone makes a huge difference
+ *   in whether it "feels like a video."
+ * - Scene narration text is burned in as a caption at the bottom of
+ *   every scene, video or still, so visuals always carry context.
+ */
 export async function composeVideo(
   script: Script,
   voiceoverPath: string,
@@ -23,6 +34,7 @@ export async function composeVideo(
           .input(scene.visualAssetPath)
           .inputOptions(["-loop 1", `-t ${scene.durationSeconds}`]);
       } else {
+        // Real video clip — trim to the scene's duration.
         command.input(scene.visualAssetPath).inputOptions([`-t ${scene.durationSeconds}`]);
       }
     }
@@ -38,7 +50,7 @@ export async function composeVideo(
       .complexFilter(filterComplex)
       .outputOptions([
         "-map [outv]",
-        `-map ${script.scenes.length}:a`,
+        `-map ${script.scenes.length}:a`, // voiceover is the last input
         "-c:v libx264",
         "-c:a aac",
         "-pix_fmt yuv420p",
@@ -51,6 +63,12 @@ export async function composeVideo(
   });
 }
 
+/**
+ * Builds the per-input filter chain for one scene:
+ * - Stills get scaled up slightly + a slow zoompan (Ken Burns effect).
+ * - Real video clips just get scaled/cropped to the standard frame.
+ * Either way, the scene's narration text is burned in as a caption.
+ */
 function buildSceneFilter(scene: Scene, index: number): string {
   const isImage = /\.(svg|png|jpg|jpeg)$/i.test(scene.visualAssetPath!);
   const fps = 24;
@@ -63,6 +81,8 @@ function buildSceneFilter(scene: Scene, index: number): string {
     `x=(w-text_w)/2:y=h-220:line_spacing=8`;
 
   if (isImage) {
+    // Scale up 15% beyond frame so the zoompan has room to pan without
+    // showing edges, then slow zoom-in over the scene's duration.
     return (
       `[${index}:v]scale=2208:1242,` +
       `zoompan=z='min(zoom+0.0007,1.15)':d=${frames}:s=1920x1080:fps=${fps},` +
@@ -77,6 +97,7 @@ function buildSceneFilter(scene: Scene, index: number): string {
 }
 
 function escapeForDrawtext(s: string): string {
+  // ffmpeg drawtext needs these characters escaped inside single quotes.
   return s
     .replace(/\\/g, "\\\\\\\\")
     .replace(/:/g, "\\:")
