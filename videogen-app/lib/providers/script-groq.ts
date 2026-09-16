@@ -37,7 +37,7 @@ Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "openai/gpt-oss-120b ",
+      model: "openai/gpt-oss-120b",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
