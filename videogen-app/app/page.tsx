@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
 
@@ -12,13 +12,47 @@ interface JobState {
   error?: string;
 }
 
+interface LibraryVideo {
+  url: string;
+  title: string;
+  createdAt: string;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  queued: "In the queue",
+  writing_script: "Writing script",
+  generating_voiceover: "Recording voiceover",
+  generating_visuals: "Selecting footage",
+  composing: "Editing final cut",
+  uploading: "Saving your video",
+  done: "It's a wrap",
+  failed: "Cut! Something went wrong",
+};
+
 export default function Home() {
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState<VideoStyle>("whiteboard-doodle");
   const [lengthSeconds, setLengthSeconds] = useState(60);
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [library, setLibrary] = useState<LibraryVideo[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function loadLibrary() {
+    try {
+      const res = await fetch("/api/library");
+      const data = await res.json();
+      setLibrary(data.videos ?? []);
+    } catch {
+      // Library is a nice-to-have — fail quietly if it can't load.
+    }
+    setLibraryLoading(false);
+  }
+
+  useEffect(() => {
+    loadLibrary();
+  }, []);
 
   async function handleGenerate() {
     if (!topic.trim()) return;
@@ -50,9 +84,12 @@ export default function Home() {
       setJob(data);
       if (data.status === "done" || data.status === "failed") {
         if (pollRef.current) clearInterval(pollRef.current);
+        if (data.status === "done") loadLibrary();
       }
     }, 2000);
   }
+
+  const busy = submitting || (job && job.status !== "done" && job.status !== "failed");
 
   return (
     <main style={{ maxWidth: 640, margin: "0 auto", padding: "48px 24px", fontFamily: "sans-serif" }}>
@@ -96,7 +133,7 @@ export default function Home() {
 
       <button
         onClick={handleGenerate}
-        disabled={submitting || !topic.trim()}
+        disabled={!!busy || !topic.trim()}
         style={{
           width: "100%",
           padding: 14,
@@ -106,16 +143,18 @@ export default function Home() {
           color: "#fff",
           border: "none",
           borderRadius: 8,
-          cursor: submitting ? "default" : "pointer",
-          opacity: submitting ? 0.6 : 1,
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.6 : 1,
         }}
       >
-        {submitting ? "Starting..." : "Generate video"}
+        {busy ? "Working..." : "Generate video"}
       </button>
 
       {job && (
         <div style={{ marginTop: 32, padding: 20, background: "#f5f5f5", borderRadius: 8 }}>
-          <p style={{ fontWeight: 600, marginBottom: 4 }}>Status: {job.status}</p>
+          <p style={{ fontWeight: 600, marginBottom: 4 }}>
+            Status: {STATUS_LABELS[job.status] ?? job.status}
+          </p>
           {job.progressNote && <p style={{ color: "#555" }}>{job.progressNote}</p>}
           {job.error && <p style={{ color: "#c00" }}>Error: {job.error}</p>}
           {job.status === "done" && job.outputVideoPath && (
@@ -125,6 +164,22 @@ export default function Home() {
           )}
         </div>
       )}
+
+      <div style={{ marginTop: 48 }}>
+        <h2 style={{ fontSize: 20, marginBottom: 16 }}>Past videos</h2>
+        {libraryLoading && <p style={{ color: "#888" }}>Loading...</p>}
+        {!libraryLoading && library.length === 0 && (
+          <p style={{ color: "#888" }}>Nothing generated yet — your finished videos will show up here.</p>
+        )}
+        {library.map((v, i) => (
+          <div key={i} style={{ marginBottom: 24 }}>
+            <p style={{ fontWeight: 600, marginBottom: 6 }}>{v.title}</p>
+            <video controls style={{ width: "100%", borderRadius: 8 }}>
+              <source src={v.url} type="video/mp4" />
+            </video>
+          </div>
+        ))}
+      </div>
     </main>
   );
 }
