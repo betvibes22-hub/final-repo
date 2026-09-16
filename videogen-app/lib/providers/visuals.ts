@@ -24,33 +24,50 @@ const CLIPS_PER_SCENE = 3;
 export async function generateVisualsForScene(
   scene: Scene,
   outDir: string,
-  style: VideoStyle = "realistic"
+  style: VideoStyle = "realistic",
+  onLog?: (text: string, service: "pixabay" | "pexels") => void
 ): Promise<VisualAsset[]> {
   const pixabayKey = process.env.PIXABAY_API_KEY;
+  const log = (text: string, service: "pixabay" | "pexels") => onLog?.(text, service);
 
   if (pixabayKey) {
     try {
+      log(`Pixabay: searching video library for scene ${scene.index + 1} — "${searchQuery(scene)}"`, "pixabay");
       const assets = await fetchPixabayVideos(scene, outDir, pixabayKey, CLIPS_PER_SCENE);
-      if (assets.length > 0) return assets;
+      if (assets.length > 0) {
+        log(`Pixabay: downloaded ${assets.length} video clip(s) for scene ${scene.index + 1}`, "pixabay");
+        return assets;
+      }
+      log(`Pixabay: no video matches for scene ${scene.index + 1}, trying photos`, "pixabay");
     } catch (err) {
       console.error(`Pixabay video failed for scene ${scene.index}, trying Pixabay photos:`, err);
+      log(`Pixabay: video search failed for scene ${scene.index + 1}, trying photos`, "pixabay");
     }
 
     try {
       const assets = await fetchPixabayPhotos(scene, outDir, pixabayKey, CLIPS_PER_SCENE);
-      if (assets.length > 0) return assets;
+      if (assets.length > 0) {
+        log(`Pixabay: downloaded ${assets.length} photo(s) for scene ${scene.index + 1}`, "pixabay");
+        return assets;
+      }
     } catch (err) {
       console.error(`Pixabay photos failed for scene ${scene.index}, trying Pexels:`, err);
+      log(`Pixabay: photo fallback failed for scene ${scene.index + 1}, trying Pexels`, "pixabay");
     }
   }
 
   const pexelsKey = process.env.PEXELS_API_KEY;
   if (pexelsKey) {
     try {
+      log(`Pexels: searching photo library for scene ${scene.index + 1} — "${searchQuery(scene)}"`, "pexels");
       const assets = await fetchPexelsPhotos(scene, outDir, pexelsKey, CLIPS_PER_SCENE);
-      if (assets.length > 0) return assets;
+      if (assets.length > 0) {
+        log(`Pexels: downloaded ${assets.length} photo(s) for scene ${scene.index + 1}`, "pexels");
+        return assets;
+      }
     } catch (err) {
       console.error(`Pexels photos failed for scene ${scene.index}, falling back to placeholder:`, err);
+      log(`Pexels: search failed for scene ${scene.index + 1}, using placeholder`, "pexels");
     }
   }
 
