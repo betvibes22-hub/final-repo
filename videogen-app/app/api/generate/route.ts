@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
+import os from "os";
 import { GenerateRequest } from "../../../lib/types";
-import { createJob, setJobStatus, updateJob, setJobFailed } from "../../../lib/jobs";
+import { createJob, setJobStatus, updateJob, setJobFailed, getJob } from "../../../lib/jobs";
 import { generateScriptGroq as generateScript } from "../../../lib/providers/script-groq";
 import { generateVoiceover } from "../../../lib/providers/tts";
 import { generateVisualForScene } from "../../../lib/providers/visuals";
 import { composeVideo } from "../../../lib/providers/compose";
+import { uploadVideo } from "../../../lib/providers/storage";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as GenerateRequest;
@@ -19,8 +21,6 @@ export async function POST(req: NextRequest) {
 
   const job = createJob(body);
 
-  // Run the pipeline in the background — respond immediately with the job id
-  // so the frontend can poll /api/status. This is intentionally NOT awaited.
   runPipeline(job.id).catch((err) => {
     setJobFailed(job.id, err instanceof Error ? err.message : String(err));
   });
@@ -29,40 +29,40 @@ export async function POST(req: NextRequest) {
 }
 
 async function runPipeline(jobId: string) {
-  const jobDir = path.join(process.cwd(), "public", "outputs", jobId);
-  const job = (await import("../../../lib/jobs")).getJob(jobId);
+  // Use the OS temp dir for scratch files — never write generated content
+  // into Next.js's public/ folder at runtime, that's what caused videos
+  // to silently fail to play. The finished video goes to Cloudinary
+  // instead (see storage.ts), which gives a reliable permanent URL.
+  const jobDir = path.join(os.tmpdir(), "videogen", jobId);
+  const job = getJob(jobId);
   if (!job) throw new Error("Job disappeared");
 
-  // 1. Script
   setJobStatus(jobId, "writing_script", "Writing the script...");
   const script = await generateScript(job.request);
   updateJob(jobId, { script });
 
-  // 2. Voiceover
   setJobStatus(jobId, "generating_voiceover", "Recording the voiceover...");
   const voiceoverPath = await generateVoiceover(script.fullNarrationText, jobDir);
   updateJob(jobId, { voiceoverPath });
 
-  // 3. Visuals (one per scene, sequentially — parallelize later if your
-  //    provider's rate limits allow it)
-  setJobStatus(jobId, "generating_visuals", "Generating visuals...");
+  setJobStatus(jobId, "generating_visuals", "Selecting footage...");
   for (const scene of script.scenes) {
     setJobStatus(
       jobId,
       "generating_visuals",
-      `Generating visuals — scene ${scene.index + 1} of ${script.scenes.length}...`
+      `Selecting footage — scene ${scene.index + 1} of ${script.scenes.length}...`
     );
     const assetPath = await generateVisualForScene(scene, jobDir);
     scene.visualAssetPath = assetPath;
   }
-  updateJob(jobId, { script }); // scenes now carry visualAssetPath
+  updateJob(jobId, { script });
 
-  // 4. Compose
-  setJobStatus(jobId, "composing", "Stitching the final video...");
-  const outputPath = path.join(jobDir, "final.mp4");
-  await composeVideo(script, voiceoverPath, outputPath);
+  setJobStatus(jobId, "composing", "Editing the final cut...");
+  const localOutputPath = path.join(jobDir, "final.mp4");
+  await composeVideo(script, voiceoverPath, localOutputPath);
 
-  // Public URL path (served from /public/outputs/...)
-  const publicPath = `/outputs/${jobId}/final.mp4`;
-  updateJob(jobId, { status: "done", outputVideoPath: publicPath, progressNote: "Done!" });
+  setJobStatus(jobId, "uploading", "Saving your video...");
+  const videoUrl = await uploadVideo(localOutputPath, script.title);
+
+  updateJob(jobId, { status: "done", outputVideoPath: videoUrl, progressNote: "Done!" });
 }
