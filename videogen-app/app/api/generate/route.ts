@@ -57,13 +57,14 @@ async function runPipeline(jobId: string) {
   updateJob(jobId, { voiceoverPath });
 
   setJobStatus(jobId, "generating_visuals", "Selecting footage...");
+  const videoSeed = Math.floor(Math.random() * 1_000_000); // shared across every scene for style consistency
   for (const scene of script.scenes) {
     setJobStatus(
       jobId,
       "generating_visuals",
       `Selecting footage — scene ${scene.index + 1} of ${script.scenes.length}...`
     );
-    scene.visualAssetPaths = await generateVisualsForScene(scene, jobDir, job.request.style);
+    scene.visualAssetPaths = await generateVisualsForScene(scene, jobDir, job.request.style, videoSeed);
   }
   updateJob(jobId, { script });
 
