@@ -49,7 +49,11 @@ async function runPipeline(jobId: string) {
   updateJob(jobId, { script });
 
   setJobStatus(jobId, "generating_voiceover", "Recording the voiceover...");
-  const voiceoverPath = await generateVoiceover(script.fullNarrationText, jobDir);
+  const voiceoverPath = await generateVoiceover(script.fullNarrationText, jobDir, {
+    gender: job.request.voiceGender,
+    voiceName: job.request.voiceName,
+    pace: job.request.voicePace,
+  });
   updateJob(jobId, { voiceoverPath });
 
   setJobStatus(jobId, "generating_visuals", "Selecting footage...");
