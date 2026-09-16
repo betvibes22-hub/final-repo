@@ -24,6 +24,7 @@ interface JobState {
   voiceoverPreviewUrl?: string;
   script?: ScriptInfo;
   error?: string;
+  request: { scriptMode?: ScriptMode };
 }
 
 interface LibraryVideo {
