@@ -121,7 +121,7 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: 640, margin: "0 auto", padding: "48px 24px", fontFamily: "sans-serif" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>VideoGen</h1>
+      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Moh Personal Videos Production</h1>
       <p style={{ color: "#666", marginBottom: 32 }}>
         Type a topic — or bring your own script. Get a finished, narrated video.
       </p>
