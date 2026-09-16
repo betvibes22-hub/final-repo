@@ -27,6 +27,7 @@ export type JobStatus =
   | "generating_voiceover"
   | "generating_visuals"
   | "composing"
+  | "uploading"
   | "done"
   | "failed";
 
