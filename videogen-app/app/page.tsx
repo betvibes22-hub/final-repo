@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 
 type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
 type ScriptMode = "ai" | "custom" | "hybrid";
+type VoiceGender = "female" | "male";
+type VoicePace = "slower" | "normal" | "faster";
 
 interface JobState {
   id: string;
@@ -19,6 +21,14 @@ interface LibraryVideo {
   createdAt: string;
 }
 
+interface TrendingVideo {
+  title: string;
+  channelTitle: string;
+  thumbnailUrl: string;
+  viewCount: number;
+  url: string;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   queued: "In the queue",
   writing_script: "Writing script",
@@ -28,6 +38,11 @@ const STATUS_LABELS: Record<string, string> = {
   uploading: "Saving your video",
   done: "It's a wrap",
   failed: "Cut! Something went wrong",
+};
+
+const VOICES_BY_GENDER: Record<VoiceGender, string[]> = {
+  female: ["Linda", "Amy", "Mary"],
+  male: ["John", "Mike"],
 };
 
 const inputStyle: React.CSSProperties = {
@@ -43,37 +58,56 @@ const inputStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = { display: "block", marginBottom: 6, fontWeight: 600 };
 
+function formatViews(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M views`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K views`;
+  return `${n} views`;
+}
+
 export default function Home() {
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState<VideoStyle>("whiteboard-doodle");
   const [lengthSeconds, setLengthSeconds] = useState(60);
   const [scriptMode, setScriptMode] = useState<ScriptMode>("ai");
   const [customScript, setCustomScript] = useState("");
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
+  const [voiceName, setVoiceName] = useState("Linda");
+  const [voicePace, setVoicePace] = useState<VoicePace>("normal");
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [library, setLibrary] = useState<LibraryVideo[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
+  const [trending, setTrending] = useState<TrendingVideo[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    loadLibrary();
+    loadTrending();
+  }, []);
 
   async function loadLibrary() {
     try {
       const res = await fetch("/api/library");
       const data = await res.json();
       setLibrary(data.videos ?? []);
-    } catch {
-      // Library is a nice-to-have — fail quietly if it can't load.
-    }
+    } catch {}
     setLibraryLoading(false);
   }
 
-  useEffect(() => {
-    loadLibrary();
-  }, []);
+  async function loadTrending() {
+    try {
+      const res = await fetch("/api/trending");
+      const data = await res.json();
+      setTrending((data.videos ?? []).slice(0, 12));
+    } catch {}
+    setTrendingLoading(false);
+  }
 
   function canSubmit() {
     if (scriptMode === "ai") return topic.trim().length > 0;
     if (scriptMode === "custom") return customScript.trim().length > 0;
-    return topic.trim().length > 0 && customScript.trim().length > 0; // hybrid
+    return topic.trim().length > 0 && customScript.trim().length > 0;
   }
 
   async function handleGenerate() {
@@ -90,6 +124,9 @@ export default function Home() {
         targetLengthSeconds: lengthSeconds,
         scriptMode,
         customScript: scriptMode === "ai" ? undefined : customScript,
+        voiceGender,
+        voiceName,
+        voicePace,
       }),
     });
     const data = await res.json();
@@ -120,155 +157,228 @@ export default function Home() {
   const busy = submitting || (job && job.status !== "done" && job.status !== "failed");
 
   return (
-    <main style={{ maxWidth: 640, margin: "0 auto", padding: "48px 24px", fontFamily: "sans-serif" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Moh Personal Videos Production</h1>
-      <p style={{ color: "#666", marginBottom: 32 }}>
-        Type a topic — or bring your own script. Get a finished, narrated video.
-      </p>
-
-      <label style={labelStyle}>Script</label>
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        {(["ai", "custom", "hybrid"] as ScriptMode[]).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setScriptMode(mode)}
-            style={{
-              flex: 1,
-              padding: 10,
-              fontSize: 14,
-              fontWeight: 600,
-              border: scriptMode === mode ? "2px solid #111" : "1px solid #ddd",
-              background: scriptMode === mode ? "#111" : "#fff",
-              color: scriptMode === mode ? "#fff" : "#111",
-              borderRadius: 8,
-              cursor: "pointer",
-            }}
-          >
-            {mode === "ai" ? "AI writes it" : mode === "custom" ? "I'll paste my own" : "Mix (AI + mine)"}
-          </button>
-        ))}
-      </div>
-
-      {scriptMode !== "custom" && (
-        <>
-          <label style={labelStyle}>Topic</label>
-          <textarea
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. how to stop procrastinating"
-            rows={2}
-            style={inputStyle}
-          />
-        </>
-      )}
-
-      {scriptMode !== "ai" && (
-        <>
-          <label style={labelStyle}>
-            {scriptMode === "custom" ? "Your script" : "Your draft (AI will expand and polish it)"}
-          </label>
-          <textarea
-            value={customScript}
-            onChange={(e) => setCustomScript(e.target.value)}
-            placeholder="Paste your script here..."
-            rows={6}
-            style={inputStyle}
-          />
-        </>
-      )}
-
-      <label style={labelStyle}>Style</label>
-      <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)} style={inputStyle}>
-        <option value="whiteboard-doodle">Whiteboard / Doodle</option>
-        <option value="cartoon">Cartoon</option>
-        <option value="realistic">Realistic</option>
-      </select>
-
-      <label style={labelStyle}>Length: {lengthSeconds}s</label>
-      <input
-        type="range"
-        min={30}
-        max={300}
-        step={15}
-        value={lengthSeconds}
-        onChange={(e) => setLengthSeconds(Number(e.target.value))}
-        style={{ width: "100%", marginBottom: 24 }}
-      />
-
-      <button
-        onClick={handleGenerate}
-        disabled={!!busy || !canSubmit()}
-        style={{
-          width: "100%",
-          padding: 14,
-          fontSize: 16,
-          fontWeight: 600,
-          background: "#111",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          cursor: busy ? "default" : "pointer",
-          opacity: busy || !canSubmit() ? 0.6 : 1,
-        }}
-      >
-        {busy ? "Working..." : "Generate video"}
-      </button>
-
-      {job && (
-        <div style={{ marginTop: 32, padding: 20, background: "#f5f5f5", borderRadius: 8 }}>
-          <p style={{ fontWeight: 600, marginBottom: 4 }}>
-            Status: {STATUS_LABELS[job.status] ?? job.status}
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "48px 24px" }}>
+      <div style={{ display: "flex", gap: 40, flexWrap: "wrap", fontFamily: "sans-serif" }}>
+        {/* MAIN COLUMN */}
+        <main style={{ flex: "2 1 480px", minWidth: 320 }}>
+          <h1 style={{ fontSize: 28, marginBottom: 8 }}>Moh Personal Videos Production</h1>
+          <p style={{ color: "#666", marginBottom: 32 }}>
+            Type a topic — or bring your own script. Get a finished, narrated video.
           </p>
-          {job.progressNote && <p style={{ color: "#555" }}>{job.progressNote}</p>}
-          {job.error && <p style={{ color: "#c00" }}>Error: {job.error}</p>}
-          {job.status === "done" && job.outputVideoPath && (
-            <>
-              <video controls style={{ width: "100%", marginTop: 16, borderRadius: 8 }}>
-                <source src={job.outputVideoPath} type="video/mp4" />
-              </video>
-              <a
-                href={job.outputVideoPath}
-                download
+
+          <label style={labelStyle}>Script</label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            {(["ai", "custom", "hybrid"] as ScriptMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setScriptMode(mode)}
                 style={{
-                  display: "inline-block",
-                  marginTop: 12,
-                  padding: "8px 16px",
-                  background: "#fff",
-                  border: "1px solid #111",
-                  borderRadius: 8,
-                  color: "#111",
-                  textDecoration: "none",
-                  fontWeight: 600,
+                  flex: 1,
+                  padding: 10,
                   fontSize: 14,
+                  fontWeight: 600,
+                  border: scriptMode === mode ? "2px solid #111" : "1px solid #ddd",
+                  background: scriptMode === mode ? "#111" : "#fff",
+                  color: scriptMode === mode ? "#fff" : "#111",
+                  borderRadius: 8,
+                  cursor: "pointer",
                 }}
               >
-                Download
-              </a>
+                {mode === "ai" ? "AI writes it" : mode === "custom" ? "I'll paste my own" : "Mix (AI + mine)"}
+              </button>
+            ))}
+          </div>
+
+          {scriptMode !== "custom" && (
+            <>
+              <label style={labelStyle}>Topic</label>
+              <textarea
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder="e.g. how to stop procrastinating"
+                rows={2}
+                style={inputStyle}
+              />
             </>
           )}
-        </div>
-      )}
 
-      <div style={{ marginTop: 48 }}>
-        <h2 style={{ fontSize: 20, marginBottom: 16 }}>Past videos</h2>
-        {libraryLoading && <p style={{ color: "#888" }}>Loading...</p>}
-        {!libraryLoading && library.length === 0 && (
-          <p style={{ color: "#888" }}>Nothing generated yet — your finished videos will show up here.</p>
-        )}
-        {library.map((v, i) => (
-          <div key={i} style={{ marginBottom: 24 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <p style={{ fontWeight: 600, margin: 0 }}>{v.title}</p>
-              <a href={v.url} download style={{ fontSize: 13, color: "#555" }}>
-                Download
-              </a>
-            </div>
-            <video controls style={{ width: "100%", borderRadius: 8 }}>
-              <source src={v.url} type="video/mp4" />
-            </video>
+          {scriptMode !== "ai" && (
+            <>
+              <label style={labelStyle}>
+                {scriptMode === "custom" ? "Your script" : "Your draft (AI will expand and polish it)"}
+              </label>
+              <textarea
+                value={customScript}
+                onChange={(e) => setCustomScript(e.target.value)}
+                placeholder="Paste your script here..."
+                rows={6}
+                style={inputStyle}
+              />
+            </>
+          )}
+
+          <label style={labelStyle}>Style</label>
+          <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)} style={inputStyle}>
+            <option value="whiteboard-doodle">Whiteboard / Doodle</option>
+            <option value="cartoon">Cartoon</option>
+            <option value="realistic">Realistic</option>
+          </select>
+
+          <label style={labelStyle}>Voice</label>
+          <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+            <select
+              value={voiceGender}
+              onChange={(e) => {
+                const g = e.target.value as VoiceGender;
+                setVoiceGender(g);
+                setVoiceName(VOICES_BY_GENDER[g][0]);
+              }}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            >
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+            <select
+              value={voiceName}
+              onChange={(e) => setVoiceName(e.target.value)}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            >
+              {VOICES_BY_GENDER[voiceGender].map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            <select
+              value={voicePace}
+              onChange={(e) => setVoicePace(e.target.value as VoicePace)}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            >
+              <option value="slower">Slower</option>
+              <option value="normal">Normal pace</option>
+              <option value="faster">Faster</option>
+            </select>
           </div>
-        ))}
+
+          <label style={labelStyle}>Length: {lengthSeconds}s</label>
+          <input
+            type="range"
+            min={30}
+            max={300}
+            step={15}
+            value={lengthSeconds}
+            onChange={(e) => setLengthSeconds(Number(e.target.value))}
+            style={{ width: "100%", marginBottom: 24 }}
+          />
+
+          <button
+            onClick={handleGenerate}
+            disabled={!!busy || !canSubmit()}
+            style={{
+              width: "100%",
+              padding: 14,
+              fontSize: 16,
+              fontWeight: 600,
+              background: "#111",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              cursor: busy ? "default" : "pointer",
+              opacity: busy || !canSubmit() ? 0.6 : 1,
+            }}
+          >
+            {busy ? "Working..." : "Generate video"}
+          </button>
+
+          {job && (
+            <div style={{ marginTop: 32, padding: 20, background: "#f5f5f5", borderRadius: 8 }}>
+              <p style={{ fontWeight: 600, marginBottom: 4 }}>
+                Status: {STATUS_LABELS[job.status] ?? job.status}
+              </p>
+              {job.progressNote && <p style={{ color: "#555" }}>{job.progressNote}</p>}
+              {job.error && <p style={{ color: "#c00" }}>Error: {job.error}</p>}
+              {job.status === "done" && job.outputVideoPath && (
+                <>
+                  <video controls style={{ width: "100%", marginTop: 16, borderRadius: 8 }}>
+                    <source src={job.outputVideoPath} type="video/mp4" />
+                  </video>
+                  <a
+                    href={job.outputVideoPath}
+                    download
+                    style={{
+                      display: "inline-block",
+                      marginTop: 12,
+                      padding: "8px 16px",
+                      background: "#fff",
+                      border: "1px solid #111",
+                      borderRadius: 8,
+                      color: "#111",
+                      textDecoration: "none",
+                      fontWeight: 600,
+                      fontSize: 14,
+                    }}
+                  >
+                    Download
+                  </a>
+                </>
+              )}
+            </div>
+          )}
+
+          <div style={{ marginTop: 48 }}>
+            <h2 style={{ fontSize: 20, marginBottom: 16 }}>Past videos</h2>
+            {libraryLoading && <p style={{ color: "#888" }}>Loading...</p>}
+            {!libraryLoading && library.length === 0 && (
+              <p style={{ color: "#888" }}>Nothing generated yet — your finished videos will show up here.</p>
+            )}
+            {library.map((v, i) => (
+              <div key={i} style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <p style={{ fontWeight: 600, margin: 0 }}>{v.title}</p>
+                  <a href={v.url} download style={{ fontSize: 13, color: "#555" }}>Download</a>
+                </div>
+                <video controls style={{ width: "100%", borderRadius: 8 }}>
+                  <source src={v.url} type="video/mp4" />
+                </video>
+              </div>
+            ))}
+          </div>
+        </main>
+
+        {/* SIDEBAR: EXPLORE */}
+        <aside style={{ flex: "1 1 280px", minWidth: 260 }}>
+          <h2 style={{ fontSize: 18, marginBottom: 4, fontFamily: "sans-serif" }}>
+            Explore — What's Trending Right Now
+          </h2>
+          <p style={{ color: "#888", fontSize: 13, marginBottom: 16, fontFamily: "sans-serif" }}>
+            Real trending Shorts on YouTube today, for inspiration.
+          </p>
+          {trendingLoading && <p style={{ color: "#888", fontFamily: "sans-serif" }}>Loading...</p>}
+          {!trendingLoading && trending.length === 0 && (
+            <p style={{ color: "#888", fontSize: 13, fontFamily: "sans-serif" }}>
+              Set YOUTUBE_API_KEY to see trending Shorts here.
+            </p>
+          )}
+          {trending.map((v, i) => (
+            <a
+              key={i}
+              href={v.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "flex", gap: 10, marginBottom: 14, textDecoration: "none", color: "inherit" }}
+            >
+              {v.thumbnailUrl && (
+                <img src={v.thumbnailUrl} alt="" style={{ width: 72, height: 96, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+              )}
+              <div style={{ fontFamily: "sans-serif", minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                  {v.title}
+                </p>
+                <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>{v.channelTitle}</p>
+                <p style={{ fontSize: 12, color: "#888", margin: 0 }}>{formatViews(v.viewCount)}</p>
+              </div>
+            </a>
+          ))}
+        </aside>
       </div>
-    </main>
+    </div>
   );
 }
