@@ -6,7 +6,7 @@ const PHOTOS_PER_SCENE = 3;
 
 const STYLE_PROMPT_SUFFIX: Record<VideoStyle, string> = {
   "whiteboard-doodle": "simple whiteboard doodle sketch, black marker line art on white background, minimal, hand-drawn style",
-  cartoon: "flat vector cartoon illustration, bold outlines, bright colors, 2D animation style",
+  cartoon: "clean modern explainer-video illustration, flat 2D vector art, bold simple character shapes, thick smooth outlines, limited soft color palette, minimal shading, polished corporate animation style, simple gradient background, professional motion-graphics look",
   realistic: "photorealistic, natural lighting, high detail",
 };
 
