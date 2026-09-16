@@ -7,11 +7,22 @@ type ScriptMode = "ai" | "custom" | "hybrid";
 type VoiceGender = "female" | "male";
 type VoicePace = "slower" | "normal" | "faster";
 
+interface SceneInfo {
+  text: string;
+}
+interface ScriptInfo {
+  title: string;
+  scenes: SceneInfo[];
+}
+
 interface JobState {
   id: string;
   status: string;
+  awaitingStage?: string;
   progressNote?: string;
   outputVideoPath?: string;
+  voiceoverPreviewUrl?: string;
+  script?: ScriptInfo;
   error?: string;
 }
 
@@ -21,17 +32,10 @@ interface LibraryVideo {
   createdAt: string;
 }
 
-interface TrendingVideo {
-  title: string;
-  channelTitle: string;
-  thumbnailUrl: string;
-  viewCount: number;
-  url: string;
-}
-
 const STATUS_LABELS: Record<string, string> = {
   queued: "In the queue",
   writing_script: "Writing script",
+  awaiting_approval: "Waiting on you",
   generating_voiceover: "Recording voiceover",
   generating_visuals: "Selecting footage",
   composing: "Editing final cut",
@@ -44,6 +48,25 @@ const VOICES_BY_GENDER: Record<VoiceGender, string[]> = {
   female: ["Linda", "Amy", "Mary"],
   male: ["John", "Mike"],
 };
+
+const TIMELINE_STEPS = [
+  { key: "writing_script", label: "Writing script" },
+  { key: "script_review", label: "Script review" },
+  { key: "generating_voiceover", label: "Recording voiceover" },
+  { key: "voice_review", label: "Voice review" },
+  { key: "generating_visuals", label: "Selecting footage" },
+  { key: "composing", label: "Editing final cut" },
+  { key: "uploading", label: "Saving video" },
+  { key: "done", label: "Done" },
+];
+
+function currentTimelineKey(job: JobState | null): string | null {
+  if (!job) return null;
+  if (job.status === "awaiting_approval") {
+    return job.awaitingStage === "script" ? "script_review" : "voice_review";
+  }
+  return job.status;
+}
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -58,11 +81,17 @@ const inputStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = { display: "block", marginBottom: 6, fontWeight: 600, color: "#f2eee3" };
 
-function formatViews(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M views`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K views`;
-  return `${n} views`;
-}
+const approveBtnStyle: React.CSSProperties = {
+  padding: "10px 18px",
+  fontSize: 14,
+  fontWeight: 600,
+  background: "#d4af37",
+  color: "#111",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+  marginTop: 12,
+};
 
 export default function Home() {
   const [topic, setTopic] = useState("");
@@ -75,15 +104,13 @@ export default function Home() {
   const [voicePace, setVoicePace] = useState<VoicePace>("normal");
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [approving, setApproving] = useState(false);
   const [library, setLibrary] = useState<LibraryVideo[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
-  const [trending, setTrending] = useState<TrendingVideo[]>([]);
-  const [trendingLoading, setTrendingLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     loadLibrary();
-    loadTrending();
   }, []);
 
   async function loadLibrary() {
@@ -93,15 +120,6 @@ export default function Home() {
       setLibrary(data.videos ?? []);
     } catch {}
     setLibraryLoading(false);
-  }
-
-  async function loadTrending() {
-    try {
-      const res = await fetch("/api/trending");
-      const data = await res.json();
-      setTrending((data.videos ?? []).slice(0, 12));
-    } catch {}
-    setTrendingLoading(false);
   }
 
   function canSubmit() {
@@ -154,6 +172,17 @@ export default function Home() {
     }, 2000);
   }
 
+  async function handleApprove(stage: string) {
+    if (!job) return;
+    setApproving(true);
+    await fetch("/api/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: job.id, stage }),
+    });
+    setApproving(false);
+  }
+
   const busy = submitting || (job && job.status !== "done" && job.status !== "failed");
 
   return (
@@ -178,9 +207,9 @@ export default function Home() {
                   padding: 10,
                   fontSize: 14,
                   fontWeight: 600,
-                  border: scriptMode === mode ? "2px solid #111" : "1px solid #ddd",
+                  border: scriptMode === mode ? "2px solid #d4af37" : "1px solid #ddd",
                   background: scriptMode === mode ? "#111" : "#fff",
-                  color: scriptMode === mode ? "#fff" : "#111",
+                  color: scriptMode === mode ? "#d4af37" : "#111",
                   borderRadius: 8,
                   cursor: "pointer",
                 }}
@@ -239,20 +268,12 @@ export default function Home() {
               <option value="female">Female</option>
               <option value="male">Male</option>
             </select>
-            <select
-              value={voiceName}
-              onChange={(e) => setVoiceName(e.target.value)}
-              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
-            >
+            <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
               {VOICES_BY_GENDER[voiceGender].map((name) => (
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
-            <select
-              value={voicePace}
-              onChange={(e) => setVoicePace(e.target.value as VoicePace)}
-              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
-            >
+            <select value={voicePace} onChange={(e) => setVoicePace(e.target.value as VoicePace)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
               <option value="slower">Slower</option>
               <option value="normal">Normal pace</option>
               <option value="faster">Faster</option>
@@ -278,8 +299,8 @@ export default function Home() {
               padding: 14,
               fontSize: 16,
               fontWeight: 600,
-              background: "#111",
-              color: "#fff",
+              background: "#d4af37",
+              color: "#111",
               border: "none",
               borderRadius: 8,
               cursor: busy ? "default" : "pointer",
@@ -290,12 +311,38 @@ export default function Home() {
           </button>
 
           {job && (
-            <div style={{ marginTop: 32, padding: 20, background: "#f5f5f5", borderRadius: 8 }}>
-              <p style={{ fontWeight: 600, marginBottom: 4 }}>
+            <div style={{ marginTop: 32, padding: 20, background: "rgba(255,255,255,0.06)", borderRadius: 8 }}>
+              <p style={{ fontWeight: 600, marginBottom: 4, color: "#f2eee3" }}>
                 Status: {STATUS_LABELS[job.status] ?? job.status}
               </p>
-              {job.progressNote && <p style={{ color: "#555" }}>{job.progressNote}</p>}
-              {job.error && <p style={{ color: "#c00" }}>Error: {job.error}</p>}
+              {job.progressNote && <p style={{ color: "#b8b2a0" }}>{job.progressNote}</p>}
+              {job.error && <p style={{ color: "#e08a8a" }}>Error: {job.error}</p>}
+
+              {/* Script approval checkpoint */}
+              {job.status === "awaiting_approval" && job.awaitingStage === "script" && job.script && (
+                <div style={{ marginTop: 16 }}>
+                  <p style={{ fontWeight: 600, color: "#d4af37", marginBottom: 8 }}>{job.script.title}</p>
+                  <div style={{ maxHeight: 220, overflowY: "auto", fontSize: 14, lineHeight: 1.6, color: "#e8e4d8" }}>
+                    {job.script.scenes.map((s, i) => (
+                      <p key={i} style={{ marginBottom: 10 }}>{s.text}</p>
+                    ))}
+                  </div>
+                  <button onClick={() => handleApprove("script")} disabled={approving} style={approveBtnStyle}>
+                    {approving ? "..." : "Approve script & continue"}
+                  </button>
+                </div>
+              )}
+
+              {/* Voice approval checkpoint */}
+              {job.status === "awaiting_approval" && job.awaitingStage === "voice" && job.voiceoverPreviewUrl && (
+                <div style={{ marginTop: 16 }}>
+                  <audio controls style={{ width: "100%" }} src={job.voiceoverPreviewUrl} />
+                  <button onClick={() => handleApprove("voice")} disabled={approving} style={approveBtnStyle}>
+                    {approving ? "..." : "Approve voice & continue"}
+                  </button>
+                </div>
+              )}
+
               {job.status === "done" && job.outputVideoPath && (
                 <>
                   <video controls style={{ width: "100%", marginTop: 16, borderRadius: 8 }}>
@@ -304,18 +351,7 @@ export default function Home() {
                   <a
                     href={job.outputVideoPath}
                     download
-                    style={{
-                      display: "inline-block",
-                      marginTop: 12,
-                      padding: "8px 16px",
-                      background: "#fff",
-                      border: "1px solid #111",
-                      borderRadius: 8,
-                      color: "#111",
-                      textDecoration: "none",
-                      fontWeight: 600,
-                      fontSize: 14,
-                    }}
+                    style={{ display: "inline-block", marginTop: 12, padding: "8px 16px", background: "transparent", border: "1px solid #d4af37", borderRadius: 8, color: "#d4af37", textDecoration: "none", fontWeight: 600, fontSize: 14 }}
                   >
                     Download
                   </a>
@@ -333,8 +369,8 @@ export default function Home() {
             {library.map((v, i) => (
               <div key={i} style={{ marginBottom: 24 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <p style={{ fontWeight: 600, margin: 0 }}>{v.title}</p>
-                  <a href={v.url} download style={{ fontSize: 13, color: "#555" }}>Download</a>
+                  <p style={{ fontWeight: 600, margin: 0, color: "#f2eee3" }}>{v.title}</p>
+                  <a href={v.url} download style={{ fontSize: 13, color: "#d4af37" }}>Download</a>
                 </div>
                 <video controls style={{ width: "100%", borderRadius: 8 }}>
                   <source src={v.url} type="video/mp4" />
@@ -344,40 +380,50 @@ export default function Home() {
           </div>
         </main>
 
-        {/* SIDEBAR: EXPLORE */}
+        {/* SIDEBAR: LIVE BOT ACTIVITY */}
         <aside style={{ flex: "1 1 280px", minWidth: 260 }}>
           <h2 style={{ fontSize: 18, marginBottom: 4, fontFamily: "sans-serif", color: "#f2eee3" }}>
-            Explore — What's Trending Right Now
+            What the bot is doing
           </h2>
-          <p style={{ color: "#b8b2a0", fontSize: 13, marginBottom: 16, fontFamily: "sans-serif" }}>
-            Real trending Shorts on YouTube today, for inspiration.
+          <p style={{ color: "#b8b2a0", fontSize: 13, marginBottom: 20, fontFamily: "sans-serif" }}>
+            Live step-by-step as your video gets made.
           </p>
-          {trendingLoading && <p style={{ color: "#888", fontFamily: "sans-serif" }}>Loading...</p>}
-          {!trendingLoading && trending.length === 0 && (
-            <p style={{ color: "#888", fontSize: 13, fontFamily: "sans-serif" }}>
-              Set YOUTUBE_API_KEY to see trending Shorts here.
+
+          {!job && (
+            <p style={{ color: "#8a8474", fontSize: 13, fontFamily: "sans-serif" }}>
+              Nothing running right now — generate a video to watch it happen here.
             </p>
           )}
-          {trending.map((v, i) => (
-            <a
-              key={i}
-              href={v.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ display: "flex", gap: 10, marginBottom: 14, textDecoration: "none", color: "inherit" }}
-            >
-              {v.thumbnailUrl && (
-                <img src={v.thumbnailUrl} alt="" style={{ width: 72, height: 96, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
-              )}
-              <div style={{ fontFamily: "sans-serif", minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", color: "#f2eee3" }}>
-                  {v.title}
-                </p>
-                <p style={{ fontSize: 12, color: "#b8b2a0", margin: "4px 0 0" }}>{v.channelTitle}</p>
-                <p style={{ fontSize: 12, color: "#b8b2a0", margin: 0 }}>{formatViews(v.viewCount)}</p>
-              </div>
-            </a>
-          ))}
+
+          {job && (
+            <div style={{ fontFamily: "sans-serif" }}>
+              {TIMELINE_STEPS.map((step) => {
+                const currentKey = currentTimelineKey(job);
+                const stepOrder = TIMELINE_STEPS.findIndex((s) => s.key === step.key);
+                const currentOrder = TIMELINE_STEPS.findIndex((s) => s.key === currentKey);
+                const isDone = job.status === "done" || (currentOrder >= 0 && stepOrder < currentOrder);
+                const isCurrent = step.key === currentKey && job.status !== "done";
+
+                return (
+                  <div key={step.key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                    <div
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        flexShrink: 0,
+                        background: isDone ? "#d4af37" : isCurrent ? "#f2eee3" : "rgba(255,255,255,0.15)",
+                        boxShadow: isCurrent ? "0 0 8px #f2eee3" : "none",
+                      }}
+                    />
+                    <span style={{ fontSize: 13, color: isDone || isCurrent ? "#f2eee3" : "#6b6656", fontWeight: isCurrent ? 600 : 400 }}>
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </aside>
       </div>
 
@@ -407,5 +453,4 @@ const POWERED_BY = [
   { name: "FFmpeg", does: "Open-source engine that edits everything together — captions, transitions, timing." },
   { name: "Cloudinary", does: "Hosts and stores every finished video, and powers your past-videos library." },
   { name: "Tavily", does: "Optional — pulls real current search trends into the script when connected." },
-  { name: "YouTube Data API", does: "Optional — powers the trending Shorts explore panel when connected." },
 ];
