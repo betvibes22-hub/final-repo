@@ -6,6 +6,7 @@ import { execSync } from "child_process";
 // Piper TTS integration (reusing Piper's own official CLI/phonemizer
 // rather than reimplementing ONNX inference from scratch in Node) is
 // viable. Delete once the Piper integration path is confirmed either way.
+// See instrumentation.ts for the boot-time version of this same check.
 export async function GET() {
   const results: Record<string, string> = {};
   const checks: Record<string, string> = {
