@@ -1,5 +1,16 @@
-import { GenerateRequest, Script, Scene } from "../types";
+import { GenerateRequest, Script, Scene, ScriptVibe } from "../types";
 import { getTrendContext } from "./trends";
+
+const VIBE_INSTRUCTIONS: Record<ScriptVibe, string> = {
+  documentary:
+    "Write in a calm, informative documentary/explainer voice — measured pacing, factual, narrator-style.",
+  "fun-shorts":
+    "Write with fun, casual YouTube Shorts/TikTok energy — punchy short sentences, a strong hook in the first line, conversational slang where natural, playful asides. This should feel like a creator talking directly to camera, not a narrator reading facts.",
+  storytime:
+    "Write like a relatable \"storytime\" video — first-person or narrative voice, build suspense/curiosity, casual and personal in tone, like someone telling a friend what happened.",
+  hype:
+    "Write with high-energy hype — bold declarative hooks, rapid-fire pacing, exclamation-worthy beats, the kind of energy that makes someone stop scrolling in the first 2 seconds and stay for a big payoff.",
+};
 
 /**
  * Groq version of script generation — genuinely free, no credit card
@@ -31,7 +42,11 @@ export async function generateScriptGroq(req: GenerateRequest): Promise<Script> 
       ? `\n\nThe user wrote a rough draft below (${draftWordCount} words). It is a starting point ONLY — it is too short/thin on its own. Do NOT simply repeat, lightly rephrase, or return it unchanged. You MUST substantially rewrite and expand it to reach ~${targetWordCount} words: keep their core ideas, topic, and tone, but add narrative detail, concrete examples, transitions between beats, and depth on each point so it reads like a fully produced script, not a draft. If the draft doesn't specify a structure, write it as a well-paced explainer with a hook, build-up, and payoff. Their draft:\n"""\n${req.customScript.trim()}\n"""`
       : "";
 
-  const systemPrompt = `You write scripts for ${req.style} explainer/story videos.
+  const vibe = req.vibe ?? "documentary";
+  const vibeInstruction = VIBE_INSTRUCTIONS[vibe];
+
+  const systemPrompt = `You write scripts for ${req.style} short-form videos.
+${vibeInstruction}
 Output ONLY valid JSON matching this shape, no other text:
 {"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
 Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}`;
