@@ -1,20 +1,17 @@
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import path from "path";
-import { Script, Scene } from "../types";
+import { Script } from "../types";
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
 /**
  * Stitches per-scene visual assets + the full voiceover MP3 into one MP4.
+ * Stills get a Ken Burns pan/zoom so they don't sit dead-still on screen.
  *
- * - Real video clips (from Pexels) play as-is, trimmed to the scene's
- *   duration — genuine motion, no extra processing needed.
- * - Still photos/placeholders get a Ken Burns pan/zoom applied so they
- *   don't sit dead-still on screen — this alone makes a huge difference
- *   in whether it "feels like a video."
- * - Scene narration text is burned in as a caption at the bottom of
- *   every scene, video or still, so visuals always carry context.
+ * Note: burned-in captions (drawtext) were removed — they need a font
+ * file that isn't available on this minimal server image by default and
+ * caused "Error initializing complex filters" failures. Can be re-added
+ * later with a bundled font file if wanted.
  */
 export async function composeVideo(
   script: Script,
@@ -34,7 +31,6 @@ export async function composeVideo(
           .input(scene.visualAssetPath)
           .inputOptions(["-loop 1", `-t ${scene.durationSeconds}`]);
       } else {
-        // Real video clip — trim to the scene's duration.
         command.input(scene.visualAssetPath).inputOptions([`-t ${scene.durationSeconds}`]);
       }
     }
@@ -50,7 +46,7 @@ export async function composeVideo(
       .complexFilter(filterComplex)
       .outputOptions([
         "-map [outv]",
-        `-map ${script.scenes.length}:a`, // voiceover is the last input
+        `-map ${script.scenes.length}:a`,
         "-c:v libx264",
         "-c:a aac",
         "-pix_fmt yuv420p",
@@ -63,43 +59,20 @@ export async function composeVideo(
   });
 }
 
-/**
- * Builds the per-input filter chain for one scene:
- * - Stills get scaled up slightly + a slow zoompan (Ken Burns effect).
- * - Real video clips just get scaled/cropped to the standard frame.
- * Either way, the scene's narration text is burned in as a caption.
- */
-function buildSceneFilter(scene: Scene, index: number): string {
+function buildSceneFilter(scene: { visualAssetPath?: string; durationSeconds: number }, index: number): string {
   const isImage = /\.(svg|png|jpg|jpeg)$/i.test(scene.visualAssetPath!);
   const fps = 24;
   const frames = Math.max(1, Math.round(scene.durationSeconds * fps));
-  const caption = escapeForDrawtext(scene.text.slice(0, 140));
-
-  const drawtext =
-    `drawtext=text='${caption}':fontcolor=white:fontsize=42:` +
-    `box=1:boxcolor=black@0.55:boxborderw=20:` +
-    `x=(w-text_w)/2:y=h-220:line_spacing=8`;
 
   if (isImage) {
-    // Scale up 15% beyond frame so the zoompan has room to pan without
-    // showing edges, then slow zoom-in over the scene's duration.
     return (
       `[${index}:v]scale=2208:1242,` +
-      `zoompan=z='min(zoom+0.0007,1.15)':d=${frames}:s=1920x1080:fps=${fps},` +
-      `${drawtext}[v${index}]`
+      `zoompan=z='min(zoom+0.0007,1.15)':d=${frames}:s=1920x1080:fps=${fps}[v${index}]`
     );
   }
 
   return (
     `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
-    `crop=1920:1080,fps=${fps},${drawtext}[v${index}]`
+    `crop=1920:1080,fps=${fps}[v${index}]`
   );
-}
-
-function escapeForDrawtext(s: string): string {
-  // ffmpeg drawtext needs these characters escaped inside single quotes.
-  return s
-    .replace(/\\/g, "\\\\\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'");
 }
