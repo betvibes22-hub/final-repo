@@ -56,7 +56,7 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
-const labelStyle: React.CSSProperties = { display: "block", marginBottom: 6, fontWeight: 600 };
+const labelStyle: React.CSSProperties = { display: "block", marginBottom: 6, fontWeight: 600, color: "#f2eee3" };
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M views`;
@@ -161,8 +161,9 @@ export default function Home() {
       <div style={{ display: "flex", gap: 40, flexWrap: "wrap", fontFamily: "sans-serif" }}>
         {/* MAIN COLUMN */}
         <main style={{ flex: "2 1 480px", minWidth: 320 }}>
-          <h1 style={{ fontSize: 28, marginBottom: 8 }}>Moh Personal Videos Production</h1>
-          <p style={{ color: "#666", marginBottom: 32 }}>
+          <h1 style={{ fontSize: 28, marginBottom: 4, color: "#d4af37" }}>Moh Personal Videos Production</h1>
+          <p style={{ color: "#b8b2a0", fontSize: 13, marginBottom: 16 }}>Made by Mohjoo</p>
+          <p style={{ color: "#cfc9ba", marginBottom: 32 }}>
             Type a topic — or bring your own script. Get a finished, narrated video.
           </p>
 
@@ -324,7 +325,7 @@ export default function Home() {
           )}
 
           <div style={{ marginTop: 48 }}>
-            <h2 style={{ fontSize: 20, marginBottom: 16 }}>Past videos</h2>
+            <h2 style={{ fontSize: 20, marginBottom: 16, color: "#f2eee3" }}>Past videos</h2>
             {libraryLoading && <p style={{ color: "#888" }}>Loading...</p>}
             {!libraryLoading && library.length === 0 && (
               <p style={{ color: "#888" }}>Nothing generated yet — your finished videos will show up here.</p>
@@ -345,10 +346,10 @@ export default function Home() {
 
         {/* SIDEBAR: EXPLORE */}
         <aside style={{ flex: "1 1 280px", minWidth: 260 }}>
-          <h2 style={{ fontSize: 18, marginBottom: 4, fontFamily: "sans-serif" }}>
+          <h2 style={{ fontSize: 18, marginBottom: 4, fontFamily: "sans-serif", color: "#f2eee3" }}>
             Explore — What's Trending Right Now
           </h2>
-          <p style={{ color: "#888", fontSize: 13, marginBottom: 16, fontFamily: "sans-serif" }}>
+          <p style={{ color: "#b8b2a0", fontSize: 13, marginBottom: 16, fontFamily: "sans-serif" }}>
             Real trending Shorts on YouTube today, for inspiration.
           </p>
           {trendingLoading && <p style={{ color: "#888", fontFamily: "sans-serif" }}>Loading...</p>}
@@ -369,28 +370,28 @@ export default function Home() {
                 <img src={v.thumbnailUrl} alt="" style={{ width: 72, height: 96, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
               )}
               <div style={{ fontFamily: "sans-serif", minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", color: "#f2eee3" }}>
                   {v.title}
                 </p>
-                <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>{v.channelTitle}</p>
-                <p style={{ fontSize: 12, color: "#888", margin: 0 }}>{formatViews(v.viewCount)}</p>
+                <p style={{ fontSize: 12, color: "#b8b2a0", margin: "4px 0 0" }}>{v.channelTitle}</p>
+                <p style={{ fontSize: 12, color: "#b8b2a0", margin: 0 }}>{formatViews(v.viewCount)}</p>
               </div>
             </a>
           ))}
         </aside>
       </div>
 
-      <footer style={{ marginTop: 64, paddingTop: 32, borderTop: "1px solid #eee", fontFamily: "sans-serif" }}>
-        <h2 style={{ fontSize: 18, marginBottom: 20 }}>What powers this site</h2>
+      <footer style={{ marginTop: 64, paddingTop: 32, borderTop: "1px solid rgba(255,255,255,0.15)", fontFamily: "sans-serif" }}>
+        <h2 style={{ fontSize: 18, marginBottom: 20, color: "#f2eee3" }}>What powers this site</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20 }}>
           {POWERED_BY.map((item) => (
             <div key={item.name}>
-              <p style={{ fontWeight: 600, margin: "0 0 4px" }}>{item.name}</p>
-              <p style={{ fontSize: 13, color: "#888", margin: 0, lineHeight: 1.5 }}>{item.does}</p>
+              <p style={{ fontWeight: 600, margin: "0 0 4px", color: "#d4af37" }}>{item.name}</p>
+              <p style={{ fontSize: 13, color: "#b8b2a0", margin: 0, lineHeight: 1.5 }}>{item.does}</p>
             </div>
           ))}
         </div>
-        <p style={{ fontSize: 12, color: "#aaa", marginTop: 28 }}>
+        <p style={{ fontSize: 12, color: "#8a8474", marginTop: 28 }}>
           Every tool here runs on a free tier — no subscriptions, no paid plans.
         </p>
       </footer>
