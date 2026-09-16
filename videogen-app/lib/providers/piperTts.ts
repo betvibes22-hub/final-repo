@@ -115,18 +115,30 @@ async function ensureVoiceModel(def: PiperVoiceDef): Promise<string> {
 export async function generateVoiceoverPiper(
   text: string,
   outDir: string,
-  options: VoiceOptions = {}
+  options: VoiceOptions = {},
+  onLog?: (text: string) => void
 ): Promise<string> {
   const gender = options.gender ?? "female";
   const candidates = VOICES.filter((v) => v.gender === gender);
   const def = candidates.find((v) => v.key === options.voiceName) ?? candidates[0];
 
+  onLog?.(`Piper: preparing local TTS engine (voice: ${def.displayName})`);
   ensurePiperInstalled();
+
+  const modelCached = fs.existsSync(path.join(VOICE_CACHE_DIR, `${def.key}.onnx`));
+  onLog?.(
+    modelCached
+      ? `Piper: using cached voice model for ${def.displayName}`
+      : `Piper: downloading voice model for ${def.displayName} from Hugging Face`
+  );
   const onnxPath = await ensureVoiceModel(def);
 
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "voiceover.wav");
   const lengthScale = PACE_LENGTH_SCALE[options.pace ?? "normal"];
+
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  onLog?.(`Piper: synthesizing narration (${wordCount} words, ${options.pace ?? "normal"} pace)`);
 
   const scriptPath = path.join(process.cwd(), "scripts", "piper_synth.py");
   const args = [scriptPath, onnxPath, outPath];
@@ -142,5 +154,6 @@ export async function generateVoiceoverPiper(
     throw new Error("Piper synthesis did not produce an output file");
   }
 
+  onLog?.(`Piper: narration ready`);
   return outPath;
 }
