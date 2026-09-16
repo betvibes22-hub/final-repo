@@ -173,6 +173,9 @@ export default function Home() {
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [previewingVoice, setPreviewingVoice] = useState(false);
+  const [voicePreviewError, setVoicePreviewError] = useState<string | null>(null);
+  const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [library, setLibrary] = useState<LibraryVideo[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -194,6 +197,34 @@ export default function Home() {
     if (scriptMode === "ai") return topic.trim().length > 0;
     if (scriptMode === "custom") return customScript.trim().length > 0;
     return topic.trim().length > 0 && customScript.trim().length > 0;
+  }
+
+  async function handlePreviewVoice() {
+    setPreviewingVoice(true);
+    setVoicePreviewError(null);
+    try {
+      const res = await fetch("/api/voice-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voiceGender, voiceName, voicePace }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Voice preview failed.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (voicePreviewAudioRef.current) {
+        voicePreviewAudioRef.current.pause();
+      }
+      const audio = new Audio(url);
+      voicePreviewAudioRef.current = audio;
+      audio.play();
+      audio.onended = () => URL.revokeObjectURL(url);
+    } catch (err) {
+      setVoicePreviewError(err instanceof Error ? err.message : String(err));
+    }
+    setPreviewingVoice(false);
   }
 
   async function handleGenerate() {
@@ -375,6 +406,29 @@ export default function Home() {
               <option value="faster">Faster</option>
             </select>
           </div>
+
+          <button
+            onClick={handlePreviewVoice}
+            disabled={previewingVoice}
+            style={{
+              padding: "8px 16px",
+              fontSize: 13,
+              fontWeight: 600,
+              background: "transparent",
+              color: "#d4af37",
+              border: "1px solid #d4af37",
+              borderRadius: 8,
+              cursor: previewingVoice ? "default" : "pointer",
+              marginTop: -8,
+              marginBottom: 20,
+              opacity: previewingVoice ? 0.6 : 1,
+            }}
+          >
+            {previewingVoice ? "Loading preview..." : "▶ Preview this voice & speed"}
+          </button>
+          {voicePreviewError && (
+            <p style={{ color: "#e08a8a", fontSize: 13, marginTop: -14, marginBottom: 20 }}>{voicePreviewError}</p>
+          )}
 
           <label style={labelStyle}>Length: {lengthSeconds}s</label>
           <input
