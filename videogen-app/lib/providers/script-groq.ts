@@ -25,9 +25,10 @@ export async function generateScriptGroq(req: GenerateRequest): Promise<Script> 
       ? `\n\nReal current search interest around this topic — weave in whichever genuinely fit:\n${trendTerms.map((t) => `- ${t}`).join("\n")}`
       : "";
 
+  const draftWordCount = req.customScript?.trim().split(/\s+/).filter(Boolean).length ?? 0;
   const hybridBlock =
     req.scriptMode === "hybrid" && req.customScript?.trim()
-      ? `\n\nThe user has already written a draft — expand and polish THIS into the full script rather than writing something new. Keep their ideas, wording, and voice; fill gaps and split it into scenes:\n"""\n${req.customScript.trim()}\n"""`
+      ? `\n\nThe user wrote a rough draft below (${draftWordCount} words). It is a starting point ONLY — it is too short/thin on its own. Do NOT simply repeat, lightly rephrase, or return it unchanged. You MUST substantially rewrite and expand it to reach ~${targetWordCount} words: keep their core ideas, topic, and tone, but add narrative detail, concrete examples, transitions between beats, and depth on each point so it reads like a fully produced script, not a draft. If the draft doesn't specify a structure, write it as a well-paced explainer with a hook, build-up, and payoff. Their draft:\n"""\n${req.customScript.trim()}\n"""`
       : "";
 
   const systemPrompt = `You write scripts for ${req.style} explainer/story videos.
