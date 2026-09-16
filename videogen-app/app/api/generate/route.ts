@@ -42,26 +42,38 @@ async function runPipeline(jobId: string) {
   if (!job) throw new Error("Job disappeared");
 
   // ── Script ──────────────────────────────────────────────
-  setJobStatus(jobId, "writing_script", "Writing the script...");
-  const script =
-    job.request.scriptMode === "custom"
-      ? buildScriptFromCustomText(job.request.customScript!, job.request)
-      : await generateScriptGroq(job.request);
-  updateJob(jobId, { script });
+  // Loops back and rewrites from scratch each time the user hits
+  // "Try again" instead of "Approve" — same generation call, just
+  // repeated, so a regenerate always gets a fresh attempt.
+  let script;
+  while (true) {
+    setJobStatus(jobId, "writing_script", "Writing the script...");
+    script =
+      job.request.scriptMode === "custom"
+        ? buildScriptFromCustomText(job.request.customScript!, job.request)
+        : await generateScriptGroq(job.request);
+    updateJob(jobId, { script });
 
-  await waitForApproval(jobId, "script");
+    const decision = await waitForApproval(jobId, "script");
+    if (decision === "approve") break;
+  }
 
   // ── Voiceover ───────────────────────────────────────────
-  setJobStatus(jobId, "generating_voiceover", "Recording the voiceover...");
-  const voiceoverPath = await generateVoiceover(script.fullNarrationText, jobDir, {
-    gender: job.request.voiceGender,
-    voiceName: job.request.voiceName,
-    pace: job.request.voicePace,
-  });
-  const voiceoverPreviewUrl = await uploadAudioPreview(voiceoverPath);
-  updateJob(jobId, { voiceoverPath, voiceoverPreviewUrl });
+  let voiceoverPath: string;
+  let voiceoverPreviewUrl: string;
+  while (true) {
+    setJobStatus(jobId, "generating_voiceover", "Recording the voiceover...");
+    voiceoverPath = await generateVoiceover(script.fullNarrationText, jobDir, {
+      gender: job.request.voiceGender,
+      voiceName: job.request.voiceName,
+      pace: job.request.voicePace,
+    });
+    voiceoverPreviewUrl = await uploadAudioPreview(voiceoverPath);
+    updateJob(jobId, { voiceoverPath, voiceoverPreviewUrl });
 
-  await waitForApproval(jobId, "voice");
+    const decision = await waitForApproval(jobId, "voice");
+    if (decision === "approve") break;
+  }
 
   // ── Visuals (no approval checkpoint — moves straight through) ──
   setJobStatus(jobId, "generating_visuals", "Selecting footage...");
