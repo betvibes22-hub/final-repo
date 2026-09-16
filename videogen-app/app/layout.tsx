@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "Moh Personal Videos Production",
   description: "Script-to-video generator",
