@@ -1,24 +1,41 @@
 import fs from "fs";
 import path from "path";
-import { Scene } from "../types";
+import { Scene, VideoStyle } from "../types";
 
 const PHOTOS_PER_SCENE = 3;
 
+const STYLE_PROMPT_SUFFIX: Record<VideoStyle, string> = {
+  "whiteboard-doodle": "simple whiteboard doodle sketch, black marker line art on white background, minimal, hand-drawn style",
+  cartoon: "flat vector cartoon illustration, bold outlines, bright colors, 2D animation style",
+  realistic: "photorealistic, natural lighting, high detail",
+};
+
 /**
- * Generates the visual assets for one scene — now MULTIPLE photos per
- * scene (cut between them every few seconds) instead of one static photo
- * held for the whole duration. Gives real editing rhythm without the
- * memory cost of ffmpeg's zoompan effect, which crashed the free-tier
- * server earlier.
+ * Generates the visual assets for one scene — multiple images (cut
+ * between them every few seconds) so it feels edited, not static.
  *
- * Returns an array of image paths, in the order they should play.
+ * Primary source: Pollinations.ai — free, no key, no signup at all.
+ * Generates an actual AI illustration matching the chosen style
+ * (whiteboard doodle / cartoon / realistic), so the style picker
+ * genuinely changes how the video looks instead of always showing
+ * generic stock photos.
+ *
+ * Falls back to matched Pexels stock photos if Pollinations doesn't
+ * return a usable image, then to a plain placeholder as a last resort.
  */
 export async function generateVisualsForScene(
   scene: Scene,
-  outDir: string
+  outDir: string,
+  style: VideoStyle = "realistic"
 ): Promise<string[]> {
-  const pexelsKey = process.env.PEXELS_API_KEY;
+  try {
+    const paths = await generatePollinationsImages(scene, outDir, style);
+    if (paths.length > 0) return paths;
+  } catch (err) {
+    console.error(`Pollinations failed for scene ${scene.index}, trying Pexels:`, err);
+  }
 
+  const pexelsKey = process.env.PEXELS_API_KEY;
   if (pexelsKey) {
     try {
       return await generateMatchedPhotos(scene, outDir, pexelsKey);
@@ -32,6 +49,36 @@ export async function generateVisualsForScene(
 
 function searchQuery(scene: Scene): string {
   return scene.visualPrompt.split(",")[0].split(".")[0].trim().slice(0, 60);
+}
+
+/** Generates PHOTOS_PER_SCENE style-matched AI images via Pollinations (free, no key). */
+async function generatePollinationsImages(
+  scene: Scene,
+  outDir: string,
+  style: VideoStyle
+): Promise<string[]> {
+  const basePrompt = `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
+  fs.mkdirSync(outDir, { recursive: true });
+  const paths: string[] = [];
+
+  for (let i = 0; i < PHOTOS_PER_SCENE; i++) {
+    // Different seed per image so the 3 images in a scene actually vary
+    // instead of all being identical.
+    const seed = scene.index * 1000 + i;
+    const url =
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(basePrompt)}` +
+      `?width=1920&height=1080&seed=${seed}&nologo=true`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Pollinations request failed: ${res.status}`);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const outPath = path.join(outDir, `scene-${scene.index}-${i}.jpg`);
+    fs.writeFileSync(outPath, buffer);
+    paths.push(outPath);
+  }
+
+  return paths;
 }
 
 async function generateMatchedPhotos(
@@ -78,10 +125,6 @@ function generatePlaceholderFrame(scene: Scene, outDir: string): string {
   <text x="960" y="500" font-family="Comic Sans MS, cursive" font-size="48"
         fill="#111111" text-anchor="middle">
     ${escapeXml(scene.visualPrompt).slice(0, 80)}
-  </text>
-  <text x="960" y="980" font-family="sans-serif" font-size="24" fill="#888888"
-        text-anchor="middle">
-    Scene placeholder — set PEXELS_API_KEY for real matching visuals
   </text>
 </svg>`.trim();
   fs.writeFileSync(outPath, svg);
