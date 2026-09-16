@@ -24,7 +24,7 @@ interface JobState {
   voiceoverPreviewUrl?: string;
   script?: ScriptInfo;
   error?: string;
-  request: { scriptMode?: ScriptMode };
+  request?: { scriptMode?: ScriptMode };
 }
 
 interface LibraryVideo {
@@ -345,13 +345,13 @@ export default function Home() {
                     <button onClick={() => handleApprove("script", "approve")} disabled={approving} style={approveBtnStyle}>
                       {approving ? "..." : "Approve script & continue"}
                     </button>
-                    {job.request.scriptMode !== "custom" && (
+                    {job.request?.scriptMode !== "custom" && (
                       <button onClick={() => handleApprove("script", "regenerate")} disabled={approving} style={disapproveBtnStyle}>
                         {approving ? "..." : "Try a different script"}
                       </button>
                     )}
                   </div>
-                  {job.request.scriptMode === "custom" && (
+                  {job.request?.scriptMode === "custom" && (
                     <p style={{ fontSize: 12, color: "#8b8574", marginTop: 6 }}>
                       Custom mode uses your pasted text as-is — edit it above and resubmit to change it.
                     </p>
