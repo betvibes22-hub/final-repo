@@ -1,4 +1,4 @@
-import { Job, JobStatus } from "./types";
+import { ActivityLogEntry, Job, JobStatus } from "./types";
 import { v4 as uuid } from "uuid";
 
 // In-memory store. Fine for local dev and testing.
@@ -20,6 +20,7 @@ export function createJob(request: Job["request"]): Job {
     request,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    activityLog: [],
   };
   jobs.set(job.id, job);
   return job;
@@ -43,6 +44,21 @@ export function setJobStatus(id: string, status: JobStatus, progressNote?: strin
 
 export function setJobFailed(id: string, error: string) {
   return updateJob(id, { status: "failed", error });
+}
+
+/**
+ * Appends one line to the job's granular activity log — one call per
+ * real thing that happens against an external service (a search, a
+ * download, a synthesis call, an upload). Drives the detailed
+ * per-service checklist in the sidebar. Capped so a very long/many-scene
+ * video doesn't grow the in-memory job object unboundedly.
+ */
+export function logActivity(id: string, text: string, service: ActivityLogEntry["service"]) {
+  const existing = jobs.get(id);
+  if (!existing) return undefined;
+  const entry: ActivityLogEntry = { ts: Date.now(), text, service };
+  const activityLog = [...existing.activityLog, entry].slice(-200);
+  return updateJob(id, { activityLog });
 }
 
 /**
