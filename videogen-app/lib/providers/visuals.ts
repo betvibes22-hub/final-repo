@@ -26,10 +26,11 @@ const STYLE_PROMPT_SUFFIX: Record<VideoStyle, string> = {
 export async function generateVisualsForScene(
   scene: Scene,
   outDir: string,
-  style: VideoStyle = "realistic"
+  style: VideoStyle = "realistic",
+  baseSeed: number = 1
 ): Promise<string[]> {
   try {
-    const paths = await generatePollinationsImages(scene, outDir, style);
+    const paths = await generatePollinationsImages(scene, outDir, style, baseSeed);
     if (paths.length > 0) return paths;
   } catch (err) {
     console.error(`Pollinations failed for scene ${scene.index}, trying Pexels:`, err);
@@ -55,16 +56,20 @@ function searchQuery(scene: Scene): string {
 async function generatePollinationsImages(
   scene: Scene,
   outDir: string,
-  style: VideoStyle
+  style: VideoStyle,
+  baseSeed: number
 ): Promise<string[]> {
   const basePrompt = `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
   fs.mkdirSync(outDir, { recursive: true });
   const paths: string[] = [];
 
   for (let i = 0; i < PHOTOS_PER_SCENE; i++) {
-    // Different seed per image so the 3 images in a scene actually vary
-    // instead of all being identical.
-    const seed = scene.index * 1000 + i;
+    // Same base seed for the whole video, with a small offset per image —
+    // research on Flux-family models shows keeping the seed close/shared
+    // (rather than wildly different) is what actually keeps the art
+    // style consistent across a whole set of images, while the prompt
+    // text is what should vary to get different content per cut.
+    const seed = baseSeed + scene.index * PHOTOS_PER_SCENE + i;
     const url =
       `https://image.pollinations.ai/prompt/${encodeURIComponent(basePrompt)}` +
       `?width=1920&height=1080&seed=${seed}&nologo=true`;
