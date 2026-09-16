@@ -3,124 +3,69 @@ import path from "path";
 import { Scene } from "../types";
 
 /**
- * Generates the visual asset for one scene. This is the pluggable, most
- * expensive part of the pipeline — swap the provider via VISUAL_PROVIDER
- * in your .env.local.
+ * Generates the visual asset for one scene, trying free options in order
+ * of "most like real video" to least:
+ *   1. A real Pexels stock VIDEO clip matching the scene (actual motion)
+ *   2. A Pexels stock PHOTO matching the scene (compose.ts adds Ken Burns
+ *      pan/zoom to this so it still feels like video, not a still)
+ *   3. A plain placeholder frame (if no PEXELS_API_KEY is set at all)
  *
- * "static-doodle" is included as a FREE fallback: it renders a simple
- * whiteboard-style placeholder frame (title text on a plain background)
- * instead of calling a paid AI model. Good for testing the whole pipeline
- * end-to-end before you spend money on real generation.
+ * Every step here is free — same Pexels key covers both photos and videos.
  */
 export async function generateVisualForScene(
   scene: Scene,
   outDir: string
 ): Promise<string> {
-  const provider = process.env.VISUAL_PROVIDER ?? "static-doodle";
+  const pexelsKey = process.env.PEXELS_API_KEY;
 
-  switch (provider) {
-    case "static-doodle":
-      return generateStaticDoodleFrame(scene, outDir);
-    case "kling":
-      return generateWithKling(scene, outDir);
-    case "wan":
-      return generateWithWan(scene, outDir);
-    default:
-      throw new Error(
-        `Unknown VISUAL_PROVIDER "${provider}". Use "static-doodle", "kling", or "wan", ` +
-          `or add your own case in lib/providers/visuals.ts.`
-      );
-  }
-}
-
-/**
- * FREE placeholder: renders a plain PNG frame with the scene's visual prompt
- * as text, via an SVG-to-PNG conversion. This lets you test the full
- * pipeline (script → voiceover → visuals → compose) without spending money,
- * before wiring up a real paid model.
- */
-async function generateStaticDoodleFrame(scene: Scene, outDir: string): Promise<string> {
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, `scene-${scene.index}.svg`);
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
-  <rect width="1920" height="1080" fill="#ffffff"/>
-  <rect x="40" y="40" width="1840" height="1000" fill="none" stroke="#111111" stroke-width="4"/>
-  <text x="960" y="500" font-family="Comic Sans MS, cursive" font-size="48"
-        fill="#111111" text-anchor="middle">
-    ${escapeXml(scene.visualPrompt).slice(0, 80)}
-  </text>
-  <text x="960" y="980" font-family="sans-serif" font-size="24" fill="#888888"
-        text-anchor="middle">
-    Scene ${scene.index + 1} — placeholder frame (set VISUAL_PROVIDER for real visuals)
-  </text>
-</svg>`.trim();
-  fs.writeFileSync(outPath, svg);
-  return outPath;
-}
-
-function escapeXml(s: string): string {
-  return s.replace(/[<>&'"]/g, (c) => {
-    switch (c) {
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case "&": return "&amp;";
-      case "'": return "&apos;";
-      case '"': return "&quot;";
-      default: return c;
+  if (pexelsKey) {
+    try {
+      const videoPath = await tryMatchedVideo(scene, outDir, pexelsKey);
+      if (videoPath) return videoPath;
+    } catch (err) {
+      console.error(`Pexels video failed for scene ${scene.index}, trying photo:`, err);
     }
-  });
+
+    try {
+      return await generateMatchedPhotoFrame(scene, outDir, pexelsKey);
+    } catch (err) {
+      console.error(`Pexels photo failed for scene ${scene.index}, falling back:`, err);
+    }
+  }
+
+  return generatePlaceholderFrame(scene, outDir);
 }
 
-/**
- * Example adapter for a Kling-style hosted API.
- * FILL IN: Kling's actual endpoint and response shape once you pick a
- * specific access route (their own API, or an aggregator like fal.ai).
- */
-async function generateWithKling(scene: Scene, outDir: string): Promise<string> {
-  const apiKey = process.env.VISUAL_PROVIDER_API_KEY;
-  const apiUrl = process.env.VISUAL_PROVIDER_API_URL;
-  if (!apiKey || !apiUrl) {
-    throw new Error("VISUAL_PROVIDER_API_KEY / VISUAL_PROVIDER_API_URL not set for Kling.");
-  }
+function searchQuery(scene: Scene): string {
+  return scene.visualPrompt.split(",")[0].split(".")[0].trim().slice(0, 60);
+}
 
-  // TODO: replace with Kling's real request/response shape.
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      prompt: scene.visualPrompt,
-      duration: scene.durationSeconds,
-    }),
-  });
+async function tryMatchedVideo(
+  scene: Scene,
+  outDir: string,
+  apiKey: string
+): Promise<string | null> {
+  const query = searchQuery(scene);
 
-  if (!response.ok) {
-    throw new Error(`Kling generation failed: ${response.status} ${await response.text()}`);
-  }
+  const res = await fetch(
+    `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=3&orientation=landscape`,
+    { headers: { Authorization: apiKey } }
+  );
 
-  const data = await response.json();
-  const videoUrl: string = data.videoUrl; // adjust to Kling's actual field name
+  if (!res.ok) throw new Error(`Pexels video search failed: ${res.status}`);
 
-  const videoResponse = await fetch(videoUrl);
-  const buffer = Buffer.from(await videoResponse.arrayBuffer());
+  const data = await res.json();
+  const video = data.videos?.[0];
+  if (!video) return null;
+
+  const files = (video.video_files ?? []) as { link: string; width: number; quality: string }[];
+  const hd = files.find((f) => f.quality === "hd") ?? files[0];
+  if (!hd) return null;
+
+  const videoRes = await fetch(hd.link);
+  const buffer = Buffer.from(await videoRes.arrayBuffer());
+
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, `scene-${scene.index}.mp4`);
   fs.writeFileSync(outPath, buffer);
-  return outPath;
-}
-
-/**
- * Example adapter for a self-hosted or rented Wan 2.2 ComfyUI endpoint.
- * FILL IN: your ComfyUI workflow's actual API shape.
- */
-async function generateWithWan(scene: Scene, outDir: string): Promise<string> {
-  const apiUrl = process.env.VISUAL_PROVIDER_API_URL;
-  if (!apiUrl) {
-    throw new Error("VISUAL_PROVIDER_API_URL not set for Wan (your ComfyUI endpoint).");
-  }
-  // TODO: wire this up to your actual ComfyUI workflow JSON + polling.
-  throw new Error("Wan adapter is a stub — fill in your ComfyUI workflow call here.");
-}
+  return
