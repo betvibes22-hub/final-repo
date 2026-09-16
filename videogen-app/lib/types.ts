@@ -32,6 +32,7 @@ export interface Script {
 export type JobStatus =
   | "queued"
   | "writing_script"
+  | "awaiting_approval"
   | "generating_voiceover"
   | "generating_visuals"
   | "composing"
@@ -45,7 +46,9 @@ export interface Job {
   request: GenerateRequest;
   script?: Script;
   voiceoverPath?: string;
+  voiceoverPreviewUrl?: string;
   outputVideoPath?: string;
+  awaitingStage?: string; // "script" | "voice" — which checkpoint we're paused at
   error?: string;
   createdAt: number;
   updatedAt: number;
