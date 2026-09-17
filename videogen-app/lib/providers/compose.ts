@@ -131,11 +131,11 @@ export async function composeVideo(
       const inputOptions =
         seg.asset.type === "video"
           ? ["-stream_loop -1", `-t ${seg.duration}`]
-          : ["-loop 1", `-t ${seg.duration}`];
+          : ["-loop 1", "-r 24", `-t ${seg.duration}`];
       command.input(seg.asset.path).inputOptions(inputOptions);
     }
 
-    const perSegmentFilters = segments.map((_, i) => buildSegmentFilter(i));
+    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type));
     const filterInputs = segments.map((_, i) => `[v${i}]`).join("");
     const concatFilter = `${filterInputs}concat=n=${segments.length}:v=1:a=0[outv]`;
 
@@ -193,9 +193,35 @@ export async function composeVideo(
   });
 }
 
-function buildSegmentFilter(index: number): string {
+/**
+ * Real video clips already have their own motion, so they just get
+ * scaled/cropped to frame. Static images (illustrated shots + photo
+ * fallbacks) get a subtle Ken Burns zoom — this is the filter that
+ * caused the earlier OOM crash, so it's built deliberately conservatively:
+ *
+ * - Moderate upscale (2560x1440, not the 4x+ some Ken Burns tutorials
+ *   use) before zoompan gives the crop-in room to work with without
+ *   ballooning per-frame memory.
+ * - `d=1` with the zoom driven by `on` (zoompan's running output-frame
+ *   counter) rather than the more common `d=<total frames>` idiom off a
+ *   single held frame. With the image fed continuously at a fixed
+ *   `-r 24`, d=1 means "one output frame per input frame, 1:1" — so the
+ *   segment's actual output length is exactly however many frames the
+ *   `-t` cutoff supplies, with no risk of zoompan producing a different
+ *   frame count than expected. That precision matters now more than it
+ *   used to: captions are timed to the absolute scene timeline, so any
+ *   drift here would desync captions from the video.
+ */
+function buildSegmentFilter(index: number, assetType: "video" | "image"): string {
+  const base = `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080`;
+
+  if (assetType === "video") {
+    return `${base},fps=24[v${index}]`;
+  }
+
   return (
-    `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
-    `crop=1920:1080,fps=24[v${index}]`
+    `${base},scale=2560:1440,` +
+    `zoompan=z='min(1+0.0008*on,1.3)':d=1:` +
+    `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=24[v${index}]`
   );
 }
