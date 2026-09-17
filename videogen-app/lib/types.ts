@@ -3,11 +3,14 @@ export type ScriptMode = "ai" | "custom" | "hybrid" | "remix";
 export type VoiceGender = "female" | "male";
 export type VoicePace = "slower" | "normal" | "faster";
 
-export type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-explainer";
+export type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-explainer" | "topx" | "sleep";
+
+export type StyleVariant = "default" | "ghibli" | "watercolor" | "crayon" | "sketchy" | "vivid" | "cinematic";
 
 export interface GenerateRequest {
   topic: string;
   style: VideoStyle;
+  styleVariant?: StyleVariant;
   vibe?: ScriptVibe;
   targetLengthSeconds: number;
   scriptMode?: ScriptMode;
