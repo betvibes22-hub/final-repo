@@ -135,7 +135,7 @@ export async function composeVideo(
       command.input(seg.asset.path).inputOptions(inputOptions);
     }
 
-    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type));
+    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type, i));
     const filterInputs = segments.map((_, i) => `[v${i}]`).join("");
     const concatFilter = `${filterInputs}concat=n=${segments.length}:v=1:a=0[outv]`;
 
@@ -151,7 +151,14 @@ export async function composeVideo(
       return filter;
     });
 
-    const filterComplex = [...perSegmentFilters, concatFilter, ...captionFilters].join(";");
+    // Loudness normalization on the voiceover — brings every video to a
+    // consistent, broadcast-standard loudness (-14 LUFS, the same
+    // target YouTube/TikTok/Instagram normalize to) instead of whatever
+    // raw level Piper/VoiceRSS happened to output. This is a real,
+    // audible "professional platform" quality difference.
+    const audioFilter = `[${segments.length}:a]loudnorm=I=-14:TP=-1:LRA=11[outa]`;
+
+    const filterComplex = [...perSegmentFilters, concatFilter, ...captionFilters, audioFilter].join(";");
 
     let lastLoggedPercent = -1;
 
@@ -160,7 +167,7 @@ export async function composeVideo(
       .complexFilter(filterComplex)
       .outputOptions([
         `-map [${lastLabel}]`,
-        `-map ${segments.length}:a`,
+        `-map [outa]`,
         "-c:v libx264",
         // Quality over speed: the pipeline isn't racing an HTTP timeout
         // (generation runs in the background, the frontend polls for
@@ -211,17 +218,32 @@ export async function composeVideo(
  *   frame count than expected. That precision matters now more than it
  *   used to: captions are timed to the absolute scene timeline, so any
  *   drift here would desync captions from the video.
+ *
+ * Zoom style cycles by segment index (in / out / subtle-in) instead of
+ * every single shot doing the exact same zoom-in at the exact same
+ * rate — small thing, but it's the difference between "every clip
+ * clearly ran through the same script" and something that reads as
+ * edited. x/y stays centered in every variant (no lateral pan) to keep
+ * this low-risk: panning would need bounds-checking against the
+ * upscaled canvas that isn't worth the added failure surface here.
  */
-function buildSegmentFilter(index: number, assetType: "video" | "image"): string {
+const ZOOM_VARIANTS = [
+  "min(1+0.0008*on,1.3)", // zoom in, standard rate
+  "max(1.3-0.0008*on,1.0)", // zoom out, starts already zoomed in
+  "min(1+0.0004*on,1.15)", // zoom in, subtler/slower
+];
+
+function buildSegmentFilter(index: number, assetType: "video" | "image", globalIndex: number): string {
   const base = `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080`;
 
   if (assetType === "video") {
     return `${base},fps=24[v${index}]`;
   }
 
+  const zoomExpr = ZOOM_VARIANTS[globalIndex % ZOOM_VARIANTS.length];
   return (
     `${base},scale=2560:1440,` +
-    `zoompan=z='min(1+0.0008*on,1.3)':d=1:` +
+    `zoompan=z='${zoomExpr}':d=1:` +
     `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=24[v${index}]`
   );
 }
