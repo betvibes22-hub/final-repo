@@ -91,6 +91,14 @@ const STYLE_PROMPT_SUFFIX: Record<Exclude<VideoStyle, "realistic">, string> = {
     "hand-drawn doodle sketch, whiteboard marker illustration, black ink line art on plain white background, simple explainer-video style, no color, highly detailed linework, professional illustration",
   cartoon:
     "flat 2D cartoon illustration, bold clean outlines, vibrant simple colors, animated explainer-video style, highly detailed, professional character design, rich background detail",
+  // Strict construction rules so every generated frame reads as the
+  // same recognizable "brand" of character, not a different loose
+  // doodle style each time: circle head, no neck, two small dot eyes,
+  // thin eyebrows, one curved line for the mouth, thin uniform stick
+  // limbs, rounded mitten hands/feet (no fingers/toes), flat solid
+  // color fills only — no gradients, no shading, no texture.
+  stickman:
+    "minimalist flat-color stickman doodle explainer style: perfect circle head with no neck, two small black dot eyes, thin black eyebrows, a single curved black line for the mouth, thin uniform black stick limbs, rounded black mitten hands with no fingers, rounded black mitten feet with no toes, flat solid color fills only, no gradients, no shading, no texture, clean uniform thin line weight, simple 2-3 layer flat-color background",
 };
 
 /**
