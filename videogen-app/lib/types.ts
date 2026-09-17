@@ -78,6 +78,13 @@ export interface Job {
   createdAt: number;
   updatedAt: number;
   progressNote?: string;
+  // SEO metadata package — title/description/tags for publishing, plus
+  // a generated thumbnail. Optional since it's produced after the
+  // video itself, not required for the core pipeline to work.
+  metaTitle?: string;
+  metaDescription?: string;
+  metaTags?: string[];
+  thumbnailUrl?: string;
   // Granular, timestamped log of every real external-service call made
   // for this video — drives the detailed sidebar checklist.
   activityLog: ActivityLogEntry[];
