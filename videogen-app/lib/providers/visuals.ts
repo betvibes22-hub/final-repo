@@ -26,8 +26,13 @@ export async function generateVisualsForScene(
   scene: Scene,
   outDir: string,
   style: VideoStyle = "realistic",
-  onLog?: (text: string, service: "pixabay" | "pexels") => void
+  onLog?: (text: string, service: "pixabay" | "pexels" | "pollinations") => void,
+  styleSeed?: number
 ): Promise<VisualAsset[]> {
+  if (style !== "realistic") {
+    return generateIllustratedVisualsForScene(scene, outDir, style, onLog, styleSeed);
+  }
+
   const pixabayKey = process.env.PIXABAY_API_KEY;
   const log = (text: string, service: "pixabay" | "pexels") => onLog?.(text, service);
 
@@ -77,6 +82,68 @@ export async function generateVisualsForScene(
 
 function searchQuery(scene: Scene): string {
   return scene.visualPrompt.split(",")[0].split(".")[0].trim().slice(0, 60);
+}
+
+const STYLE_PROMPT_SUFFIX: Record<Exclude<VideoStyle, "realistic">, string> = {
+  "whiteboard-doodle":
+    "hand-drawn doodle sketch, whiteboard marker illustration, black ink line art on plain white background, simple explainer-video style, no color",
+  cartoon:
+    "flat 2D cartoon illustration, bold clean outlines, vibrant simple colors, animated explainer-video style, minimal background detail",
+};
+
+/**
+ * Derives one deterministic seed from the video's title so every scene's
+ * illustration is generated with the same Pollinations seed. This is not
+ * true character consistency (Pollinations has no reference-image
+ * pinning) — it biases the model toward a similar overall palette and
+ * rendering style across a video's scenes rather than a different random
+ * look every time, which is the closest a free, keyless image API gets
+ * to "the same character/world every scene."
+ */
+export function deriveStyleSeed(title: string): number {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = (hash * 31 + title.charCodeAt(i)) >>> 0;
+  }
+  return hash % 1_000_000;
+}
+
+/**
+ * AI-illustrated visuals for the "whiteboard-doodle" and "cartoon"
+ * styles — the actual "artbase.ai vibe" ask. Pollinations.ai (already
+ * used elsewhere in this app for the background) is genuinely free, no
+ * key, no card — no paid image-generation service was introduced for
+ * this. One illustration per scene, no motion applied yet: Ken
+ * Burns/pan-zoom is being reintroduced as its own separate, isolated,
+ * tested change (same discipline as captions) rather than bundled in
+ * here, since zoompan is what caused the earlier OOM crash.
+ */
+async function generateIllustratedVisualsForScene(
+  scene: Scene,
+  outDir: string,
+  style: Exclude<VideoStyle, "realistic">,
+  onLog?: (text: string, service: "pollinations") => void,
+  styleSeed?: number
+): Promise<VisualAsset[]> {
+  fs.mkdirSync(outDir, { recursive: true });
+  const seed = styleSeed ?? deriveStyleSeed(scene.visualPrompt);
+  const prompt = `${searchQuery(scene) || scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
+  const url =
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+    `?width=1920&height=1080&seed=${seed}&nologo=true`;
+
+  onLog?.(`Pollinations: generating ${style} illustration for scene ${scene.index + 1}`, "pollinations");
+
+  const outPath = path.join(outDir, `scene-${scene.index}-illustrated.jpg`);
+  try {
+    await downloadToFile(url, outPath);
+    onLog?.(`Pollinations: illustration ready for scene ${scene.index + 1}`, "pollinations");
+    return [{ path: outPath, type: "image" }];
+  } catch (err) {
+    console.error(`Pollinations illustration failed for scene ${scene.index}, using placeholder:`, err);
+    onLog?.(`Pollinations: generation failed for scene ${scene.index + 1}, using placeholder`, "pollinations");
+    return [generatePlaceholderFrame(scene, outDir)];
+  }
 }
 
 /** Searches Pixabay's video library and downloads up to `count` matching clips. */
