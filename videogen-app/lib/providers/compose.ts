@@ -47,20 +47,31 @@ interface CaptionCue {
  * which wrapped into many stacked lines and visually ate half the
  * frame. This is what actually produces "one line, then it clears, then
  * the next sentence" instead of a wall of text.
+ *
+ * `crossfadeShift` accounts for scene-to-scene crossfades shortening
+ * the overall timeline: each of the `sceneIndex` transitions before
+ * this scene overlaps CROSSFADE_DURATION seconds of it with the
+ * previous scene, so this scene's content actually lands
+ * `sceneIndex * CROSSFADE_DURATION` seconds earlier in the final output
+ * than its original (non-overlapping) script timing says. Passing 0
+ * here reproduces the old no-crossfade behavior exactly.
  */
-function buildCaptionCues(script: Script, workDir: string): CaptionCue[] {
+function buildCaptionCues(script: Script, workDir: string, crossfadeDuration: number): CaptionCue[] {
   const cues: CaptionCue[] = [];
   for (const scene of script.scenes) {
     const sentences = splitSentences(scene.text);
     if (sentences.length === 0) continue;
     const totalChars = sentences.reduce((sum, s) => sum + s.length, 0) || 1;
+    const shift = scene.index * crossfadeDuration;
 
-    let cursor = scene.startSeconds;
+    let cursor = scene.startSeconds - shift;
     sentences.forEach((sentence, i) => {
       const isLast = i === sentences.length - 1;
       const share = sentence.length / totalChars;
       const absStart = cursor;
-      const absEnd = isLast ? scene.startSeconds + scene.durationSeconds : cursor + scene.durationSeconds * share;
+      const absEnd = isLast
+        ? scene.startSeconds + scene.durationSeconds - shift
+        : cursor + scene.durationSeconds * share;
 
       const cuePath = path.join(workDir, `caption-${scene.index}-${i}.txt`);
       fs.writeFileSync(cuePath, wrapCaption(sentence), "utf-8");
@@ -71,29 +82,34 @@ function buildCaptionCues(script: Script, workDir: string): CaptionCue[] {
   return cues;
 }
 
+// How long each scene-to-scene crossfade takes. Kept short and
+// conservative — this is well under the shortest scene we'd ever
+// produce (scenes are 15s+ in practice), so there's no risk of a
+// transition overlapping more than one scene's own content.
+const CROSSFADE_DURATION = 0.5;
+
 /**
  * Stitches every scene's visual asset(s) + the full voiceover MP3 into
- * one MP4, with burned-in, sentence-timed captions. Each segment can be
- * either a real video clip (Pixabay/illustrated) or a static image
- * (a fallback) — they need different ffmpeg input handling, so each
- * segment carries its type.
+ * one MP4, with burned-in, sentence-timed captions and a crossfade
+ * between each scene (hard cuts are kept WITHIN a scene, between its
+ * own multiple shots — only scene-to-scene boundaries get the fade).
+ * Each segment can be either a real video clip (Pixabay/illustrated) or
+ * a static image (a fallback) — they need different ffmpeg input
+ * handling, so each segment carries its type.
  *
- * Captions are applied AFTER the concat, as a chain of drawtext filters
- * keyed to the final timeline via `enable='between(t,start,end)'` —
- * one filter per sentence, each only drawing during its own window —
- * rather than baked into each segment's local filter chain. That
- * decouples captions entirely from however many visual segments a
- * scene has (3 illustrated shots vs 1 video clip vs whatever), which is
- * what a per-segment caption couldn't do cleanly.
+ * Structure: each scene's own segments are concatenated into one
+ * `[scene{i}]` sub-stream first, then consecutive scene streams are
+ * chained together with `xfade`. Captions are applied AFTER that full
+ * chain, keyed to the final (crossfade-shortened) timeline via
+ * `enable='between(t,start,end)'` — one filter per sentence — with
+ * buildCaptionCues already accounting for how much each crossfade
+ * shifts everything earlier.
  *
  * Captions still use drawtext with `textfile=` rather than inline
  * `text=...` — ffmpeg's filtergraph syntax needs colons, commas, and
  * quotes inside filter option values escaped, and real narration is
  * full of exactly those characters. Reading from a file sidesteps that
  * escaping entirely.
- *
- * Crossfade transitions and Ken Burns motion are still NOT reintroduced
- * here — each is its own separate, isolated, tested change.
  */
 export async function composeVideo(
   script: Script,
@@ -105,7 +121,9 @@ export async function composeVideo(
     const command = ffmpeg();
     const workDir = path.dirname(outputPath);
 
-    const segments: { asset: VisualAsset; duration: number }[] = [];
+    // Flat list for ffmpeg -i input ordering, but each carries its
+    // scene index so segments can be regrouped per-scene for concat.
+    const segments: { asset: VisualAsset; duration: number; sceneIndex: number }[] = [];
     for (const scene of script.scenes) {
       const assets = scene.visualAssetPaths ?? [];
       if (assets.length === 0) {
@@ -113,15 +131,26 @@ export async function composeVideo(
       }
       const perAsset = scene.durationSeconds / assets.length;
       for (const asset of assets) {
-        segments.push({ asset, duration: perAsset });
+        segments.push({ asset, duration: perAsset, sceneIndex: scene.index });
       }
     }
 
-    const captionCues = buildCaptionCues(script, workDir);
+    // Crossfades are built and ready below, but disabled for now: the
+    // bundled @ffmpeg-installer static binary (an old 2018-era build)
+    // doesn't have the `xfade` filter compiled in at all — confirmed
+    // directly ("No such filter: 'xfade'"), not a bug in this code.
+    // Fixing that means upgrading the ffmpeg binary itself, which would
+    // need every other filter already relied on here (captions,
+    // zoompan, loudnorm) re-verified against the new build before it's
+    // safe to ship — a separate, larger piece of work. Hard cuts
+    // between scenes in the meantime; shots within a scene were always
+    // hard cuts and still are.
+    const useCrossfade = false && script.scenes.length > 1;
+    const captionCues = buildCaptionCues(script, workDir, useCrossfade ? CROSSFADE_DURATION : 0);
 
     onLog?.(
       `FFmpeg: compositing ${segments.length} clip(s) across ${script.scenes.length} scene(s)` +
-        ` with ${captionCues.length} timed caption(s)`
+        ` with ${captionCues.length} timed caption(s)${useCrossfade ? " and scene crossfades" : ""}`
     );
 
     for (const seg of segments) {
@@ -136,10 +165,48 @@ export async function composeVideo(
     }
 
     const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type, i));
-    const filterInputs = segments.map((_, i) => `[v${i}]`).join("");
-    const concatFilter = `${filterInputs}concat=n=${segments.length}:v=1:a=0[outv]`;
 
-    let lastLabel = "outv";
+    // Group segment labels by scene, in scene order, and concat each
+    // scene's own shots into one [scene{i}] stream.
+    const sceneFilters: string[] = [];
+    const sceneLabels: string[] = [];
+    for (const scene of script.scenes) {
+      const ownLabels = segments
+        .map((seg, i) => ({ seg, label: `v${i}` }))
+        .filter((x) => x.seg.sceneIndex === scene.index)
+        .map((x) => `[${x.label}]`);
+      const sceneLabel = `scene${scene.index}`;
+      sceneFilters.push(`${ownLabels.join("")}concat=n=${ownLabels.length}:v=1:a=0[${sceneLabel}]`);
+      sceneLabels.push(sceneLabel);
+    }
+
+    // Chain crossfades between consecutive scenes. offset is measured
+    // from the start of the combined-so-far stream; each transition
+    // both consumes and re-produces CROSSFADE_DURATION seconds of
+    // overlap, which is exactly what buildCaptionCues' shift math above
+    // assumes.
+    let lastLabel = sceneLabels[0];
+    const xfadeFilters: string[] = [];
+    if (useCrossfade) {
+      let cumulativeLen = script.scenes[0].durationSeconds;
+      for (let i = 1; i < script.scenes.length; i++) {
+        const offset = cumulativeLen - CROSSFADE_DURATION;
+        const nextLabel = `x${i}`;
+        xfadeFilters.push(
+          `[${lastLabel}][${sceneLabels[i]}]xfade=transition=fade:duration=${CROSSFADE_DURATION}:` +
+            `offset=${offset.toFixed(2)}[${nextLabel}]`
+        );
+        cumulativeLen = cumulativeLen + script.scenes[i].durationSeconds - CROSSFADE_DURATION;
+        lastLabel = nextLabel;
+      }
+    } else if (sceneLabels.length > 1) {
+      // Hard-cut fallback: just concat all the per-scene streams
+      // together in order, same as the old single-pass concat did.
+      const joined = sceneLabels.map((l) => `[${l}]`).join("");
+      xfadeFilters.push(`${joined}concat=n=${sceneLabels.length}:v=1:a=0[allscenes]`);
+      lastLabel = "allscenes";
+    }
+
     const captionFilters = captionCues.map((cue, i) => {
       const nextLabel = `cap${i}`;
       const filter =
@@ -158,7 +225,13 @@ export async function composeVideo(
     // audible "professional platform" quality difference.
     const audioFilter = `[${segments.length}:a]loudnorm=I=-14:TP=-1:LRA=11[outa]`;
 
-    const filterComplex = [...perSegmentFilters, concatFilter, ...captionFilters, audioFilter].join(";");
+    const filterComplex = [
+      ...perSegmentFilters,
+      ...sceneFilters,
+      ...xfadeFilters,
+      ...captionFilters,
+      audioFilter,
+    ].join(";");
 
     let lastLoggedPercent = -1;
 
