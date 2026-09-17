@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 
 type VideoStyle = "whiteboard-doodle" | "cartoon" | "stickman" | "realistic";
-type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-explainer";
+type StyleVariant = "default" | "ghibli" | "watercolor" | "crayon" | "sketchy" | "vivid" | "cinematic";
+type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-explainer" | "topx" | "sleep";
 type ScriptMode = "ai" | "custom" | "hybrid";
 type VoiceGender = "female" | "male";
 type VoicePace = "slower" | "normal" | "faster";
@@ -169,6 +170,7 @@ const disapproveBtnStyle: React.CSSProperties = {
 export default function Home() {
   const [topic, setTopic] = useState("");
   const [style, setStyle] = useState<VideoStyle>("whiteboard-doodle");
+  const [styleVariant, setStyleVariant] = useState<StyleVariant>("default");
   const [vibe, setVibe] = useState<ScriptVibe>("fun-shorts");
   const [lengthSeconds, setLengthSeconds] = useState(60);
   const [scriptMode, setScriptMode] = useState<ScriptMode>("ai");
@@ -251,6 +253,7 @@ export default function Home() {
       body: JSON.stringify({
         topic,
         style,
+        styleVariant,
         vibe,
         targetLengthSeconds: lengthSeconds,
         scriptMode,
@@ -310,6 +313,7 @@ export default function Home() {
       const form = new FormData();
       form.append("video", remixFile);
       form.append("style", style);
+      form.append("styleVariant", styleVariant);
       form.append("vibe", vibe);
       form.append("targetLengthSeconds", String(lengthSeconds));
       form.append("voiceGender", voiceGender);
@@ -515,6 +519,8 @@ export default function Home() {
             <option value="fun-shorts">Fun / Casual (YouTube Shorts energy)</option>
             <option value="storytime">Storytime / Relatable</option>
             <option value="hype">Hype / High-energy hook</option>
+            <option value="topx">Top X / Countdown list</option>
+            <option value="sleep">Sleep / Calm ambient</option>
             <option value="documentary">Documentary / Serious</option>
             <option value="viral-explainer">Viral Explainer (evidence-dense, cold open, callbacks)</option>
           </select>
@@ -526,6 +532,21 @@ export default function Home() {
             <option value="cartoon">Cartoon</option>
             <option value="realistic">Realistic</option>
           </select>
+
+          {style !== "realistic" && (
+            <>
+              <label style={labelStyle}>Look</label>
+              <select value={styleVariant} onChange={(e) => setStyleVariant(e.target.value as StyleVariant)} style={inputStyle}>
+                <option value="default">Default</option>
+                <option value="ghibli">Ghibli-inspired</option>
+                <option value="watercolor">Watercolor</option>
+                <option value="crayon">Crayon</option>
+                <option value="sketchy">Sketchy</option>
+                <option value="vivid">Vivid</option>
+                <option value="cinematic">Cinematic</option>
+              </select>
+            </>
+          )}
 
           <label style={labelStyle}>Voice</label>
           <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
