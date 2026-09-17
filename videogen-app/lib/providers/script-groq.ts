@@ -25,7 +25,8 @@ const VIBE_INSTRUCTIONS: Record<ScriptVibe, string> = {
  */
 export async function generateScriptGroq(
   req: GenerateRequest,
-  onLog?: (text: string, service: "groq" | "tavily") => void
+  onLog?: (text: string, service: "groq" | "tavily") => void,
+  attempt = 0
 ): Promise<Script> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -93,6 +94,11 @@ Output ONLY valid JSON matching this shape, no other text:
 {"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
 Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}${remixBlock}`;
 
+  const regenerateBlock =
+    attempt > 0
+      ? `\n\nThis is a regeneration — the previous draft was rejected. Write a genuinely different take: a different opening scenario/hook, different specific facts or examples, different structural choices within the required beats. Do not reuse phrasing, sentences, or the same specific examples from a typical first-pass answer to this topic.`
+      : "";
+
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -101,9 +107,13 @@ Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${
     },
     body: JSON.stringify({
       model: "openai/gpt-oss-120b",
+      // Without an explicit temperature, regenerating with an identical
+      // prompt could return an almost identical script — this is what
+      // was causing "regenerate" to not actually change anything.
+      temperature: attempt > 0 ? 1.1 : 0.9,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: systemPrompt + regenerateBlock },
         { role: "user", content: `Topic: ${req.topic}` },
       ],
     }),
