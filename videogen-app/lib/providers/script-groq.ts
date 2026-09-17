@@ -10,6 +10,8 @@ const VIBE_INSTRUCTIONS: Record<ScriptVibe, string> = {
     "Write like a relatable \"storytime\" video — first-person or narrative voice, build suspense/curiosity, casual and personal in tone, like someone telling a friend what happened.",
   hype:
     "Write with high-energy hype — bold declarative hooks, rapid-fire pacing, exclamation-worthy beats, the kind of energy that makes someone stop scrolling in the first 2 seconds and stay for a big payoff.",
+  "viral-explainer":
+    "Write in the dense, evidence-driven viral-explainer style (the format used by top-performing history/science/psychology explainer channels). Structure, in order: (1) a cold open in second person, present tense, dropping the viewer straight into a sensory high-stakes moment — no \"in this video,\" no title restatement; (2) one short, stark stakes sentence; (3) pivot straight into the real question and then evidence, no filler transition; (4) the core of the script — repeated units of claim → a specific named source (a real place, study, researcher, or historical event) → a precise number (year, weight, distance, percent, temperature) → a plain-language translation of why it matters. Never state a vague claim without a name or number attached; (5) a short rhetorical question every 30-60 seconds of runtime to re-hook the listener (\"So what happened?\", \"But why?\"); (6) a callback — plant a specific detail early, pay it off later; (7) keep bridging back to the viewer's own life/body/habits throughout the body, not just at the end; (8) a short, punchy, reflective closer that zooms out to one resonant line, using sentence fragments for rhythm. Never coast more than a sentence or two without a hook or new fact, never use vague qualifiers like \"a long time ago\" or \"very strong,\" never write a robotic list (\"Reason one, reason two\"), and mix short fragments with longer sentences throughout.",
 };
 
 /**
@@ -68,11 +70,25 @@ export async function generateScriptGroq(
       ? `\n\nBelow is a transcript of a video the user wants to remake in their own style. Study its TOPIC, STRUCTURE, and PACING only — the order of ideas, how it opens, how it builds, how it lands. Do NOT copy, closely paraphrase, or lift any sentence or distinctive phrase from it. Write a completely ORIGINAL script, in your own words throughout, that covers similar ground with a similar shape but is not a reproduction of this one in any way. Treat the transcript as a structural reference, never as source text to quote from. Transcript:\n"""\n${req.remixTranscript.trim().slice(0, 6000)}\n"""`
       : "";
 
+  // Consistency for illustrated styles: Pollinations has no memory
+  // between image calls, so if scene visualPrompts just say "the same
+  // character as before" the image generator has nothing to work with
+  // and every shot drifts. The fix is to make Groq do the consistency
+  // work up front — lock a character/setting description once, then
+  // write that FULL description into every single scene's visualPrompt
+  // that features them, spelled out completely each time rather than
+  // referenced by name. Repetitive on purpose: each image prompt must
+  // stand alone.
+  const illustratedStyle = req.style === "whiteboard-doodle" || req.style === "cartoon" || req.style === "stickman";
+  const consistencyBlock = illustratedStyle
+    ? `\n\nBefore writing scenes: privately decide on a locked character description (hair, skin tone, clothing, build — driven by this specific topic, not generic defaults) for any recurring character, and a locked setting description (palette, key elements, lighting) for any setting the script revisits. Then, for every scene's "visualPrompt", write out the COMPLETE character and setting description in full every single time they appear — never a shorthand reference like "the same character" or "Scene 2's setting." Each visualPrompt is used in total isolation by an image generator with no memory of other scenes, so it must be a fully self-contained description on its own: character (if present) fully described, setting fully described, pose/action, expression, and framing — every time, even if that means repeating the same sentences across many scenes.`
+    : "";
+
   const vibe = req.vibe ?? "documentary";
   const vibeInstruction = VIBE_INSTRUCTIONS[vibe];
 
   const systemPrompt = `You write scripts for ${req.style} short-form videos.
-${vibeInstruction}
+${vibeInstruction}${consistencyBlock}
 Output ONLY valid JSON matching this shape, no other text:
 {"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
 Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}${remixBlock}`;
