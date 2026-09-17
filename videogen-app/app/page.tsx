@@ -19,7 +19,7 @@ interface ScriptInfo {
 interface ActivityLogEntry {
   ts: number;
   text: string;
-  service: "groq" | "tavily" | "piper" | "voicerss" | "pixabay" | "pexels" | "ffmpeg" | "cloudinary";
+  service: "groq" | "tavily" | "piper" | "voicerss" | "pixabay" | "pexels" | "pollinations" | "ffmpeg" | "cloudinary";
 }
 
 interface JobState {
@@ -99,6 +99,7 @@ const SERVICE_META: Record<ActivityLogEntry["service"], { label: string; color: 
   voicerss: { label: "VoiceRSS (voice fallback)", color: "#c792ea" },
   pixabay: { label: "Pixabay (footage)", color: "#7ec699" },
   pexels: { label: "Pexels (footage fallback)", color: "#7ec699" },
+  pollinations: { label: "Pollinations (AI illustrations)", color: "#e07af2" },
   ffmpeg: { label: "FFmpeg (editing)", color: "#f2994a" },
   cloudinary: { label: "Cloudinary (storage)", color: "#56ccf2" },
 };
@@ -110,6 +111,7 @@ const ALL_SERVICES: ActivityLogEntry["service"][] = [
   "voicerss",
   "pixabay",
   "pexels",
+  "pollinations",
   "ffmpeg",
   "cloudinary",
 ];
@@ -686,10 +688,11 @@ export default function Home() {
 const POWERED_BY = [
   { name: "Groq", does: "Writes the script — a fast, free AI language model." },
   { name: "Piper", does: "Self-hosted, open-source text-to-speech — 20 real voices, no API cap." },
-  { name: "Pixabay", does: "Real stock video footage matched to each scene, cut between for pacing." },
+  { name: "Pixabay", does: "Real stock video footage for Realistic-style videos, matched to each scene." },
   { name: "Pexels", does: "Backup photo source if Pixabay doesn't return a good match." },
+  { name: "Pollinations", does: "Generates the AI illustrations for Whiteboard/Doodle and Cartoon styles." },
   { name: "VoiceRSS", does: "Automatic voiceover fallback if Piper fails on a given run." },
-  { name: "FFmpeg", does: "Open-source engine that edits everything together — scaling, cropping, timing." },
+  { name: "FFmpeg", does: "Open-source engine that edits everything together — captions, timing, encoding." },
   { name: "Cloudinary", does: "Hosts and stores every finished video, and powers your past-videos library." },
   { name: "Tavily", does: "Optional — pulls real current search trends into the script when connected." },
 ];
