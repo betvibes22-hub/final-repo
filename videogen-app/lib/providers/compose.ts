@@ -164,7 +164,7 @@ export async function composeVideo(
       command.input(seg.asset.path).inputOptions(inputOptions);
     }
 
-    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type, i));
+    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type, i, seg.duration));
 
     // Group segment labels by scene, in scene order, and concat each
     // scene's own shots into one [scene{i}] stream.
@@ -305,28 +305,71 @@ export async function composeVideo(
 // should move). Reuses the exact same plain scale/crop path already
 // proven for video clips, so it adds zero new risk — no zoompan
 // involved at all for this variant.
-const MOTION_VARIANTS: (string | null)[] = [
-  "min(1+0.0008*on,1.3)", // zoom in, standard rate
-  "max(1.3-0.0008*on,1.0)", // zoom out, starts already zoomed in
-  "min(1+0.0004*on,1.15)", // zoom in, subtler/slower
-  null, // static hold
+//
+// "pan" is a distinct fourth motion type: a fixed, moderate zoom level
+// (so there's crop headroom to move within) with the crop window
+// sliding left-to-right over the shot's exact duration, rather than
+// zooming. Bounds are computed per-shot from its real duration (passed
+// in explicitly) so the pan can never slide past the safe margin
+// regardless of how long or short that particular shot is.
+const MOTION_VARIANTS: ("zoom-in" | "zoom-out" | "zoom-subtle" | "hold" | "pan")[] = [
+  "zoom-in",
+  "zoom-out",
+  "zoom-subtle",
+  "hold",
+  "pan",
 ];
 
-function buildSegmentFilter(index: number, assetType: "video" | "image", globalIndex: number): string {
+// At PAN_ZOOM, scale=2560:1440 gives a crop width of 2560/PAN_ZOOM.
+// The margin available to slide across is 2560 - that crop width.
+// PAN_MARGIN_PX stays safely under that (2560 - 2560/1.2 ≈ 427px
+// available at zoom 1.2) so the pan can never reach the frame edge.
+const PAN_ZOOM = 1.2;
+const PAN_MARGIN_PX = 300;
+
+function buildSegmentFilter(
+  index: number,
+  assetType: "video" | "image",
+  globalIndex: number,
+  durationSeconds: number
+): string {
   const base = `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080`;
 
   if (assetType === "video") {
     return `${base},fps=24[v${index}]`;
   }
 
-  const motion = MOTION_VARIANTS[globalIndex % MOTION_VARIANTS.length];
-  if (motion === null) {
+  const variant = MOTION_VARIANTS[globalIndex % MOTION_VARIANTS.length];
+
+  if (variant === "hold") {
     return `${base},fps=24[v${index}]`;
   }
 
+  if (variant === "pan") {
+    const totalFrames = Math.max(1, Math.round(durationSeconds * 24));
+    // Alternate pan direction by index so it's not always the same
+    // left-to-right sweep every time it comes up.
+    const leftToRight = globalIndex % 2 === 0;
+    const xExpr = leftToRight
+      ? `${PAN_MARGIN_PX}*min(on/${totalFrames},1)`
+      : `${PAN_MARGIN_PX}-${PAN_MARGIN_PX}*min(on/${totalFrames},1)`;
+    return (
+      `${base},scale=2560:1440,` +
+      `zoompan=z='${PAN_ZOOM}':d=1:` +
+      `x='${xExpr}':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=24[v${index}]`
+    );
+  }
+
+  const zoomExpr =
+    variant === "zoom-in"
+      ? "min(1+0.0008*on,1.3)"
+      : variant === "zoom-out"
+      ? "max(1.3-0.0008*on,1.0)"
+      : "min(1+0.0004*on,1.15)"; // zoom-subtle
+
   return (
     `${base},scale=2560:1440,` +
-    `zoompan=z='${motion}':d=1:` +
+    `zoompan=z='${zoomExpr}':d=1:` +
     `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=24[v${index}]`
   );
 }
