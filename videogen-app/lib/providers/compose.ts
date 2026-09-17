@@ -300,10 +300,16 @@ export async function composeVideo(
  * this low-risk: panning would need bounds-checking against the
  * upscaled canvas that isn't worth the added failure surface here.
  */
-const ZOOM_VARIANTS = [
+// null = static hold (no motion at all — for weight/emphasis on a beat
+// that deserves stillness, per real editing practice: not every shot
+// should move). Reuses the exact same plain scale/crop path already
+// proven for video clips, so it adds zero new risk — no zoompan
+// involved at all for this variant.
+const MOTION_VARIANTS: (string | null)[] = [
   "min(1+0.0008*on,1.3)", // zoom in, standard rate
   "max(1.3-0.0008*on,1.0)", // zoom out, starts already zoomed in
   "min(1+0.0004*on,1.15)", // zoom in, subtler/slower
+  null, // static hold
 ];
 
 function buildSegmentFilter(index: number, assetType: "video" | "image", globalIndex: number): string {
@@ -313,10 +319,14 @@ function buildSegmentFilter(index: number, assetType: "video" | "image", globalI
     return `${base},fps=24[v${index}]`;
   }
 
-  const zoomExpr = ZOOM_VARIANTS[globalIndex % ZOOM_VARIANTS.length];
+  const motion = MOTION_VARIANTS[globalIndex % MOTION_VARIANTS.length];
+  if (motion === null) {
+    return `${base},fps=24[v${index}]`;
+  }
+
   return (
     `${base},scale=2560:1440,` +
-    `zoompan=z='${zoomExpr}':d=1:` +
+    `zoompan=z='${motion}':d=1:` +
     `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=24[v${index}]`
   );
 }
