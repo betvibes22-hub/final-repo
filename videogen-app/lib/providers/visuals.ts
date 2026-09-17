@@ -88,9 +88,9 @@ function searchQuery(scene: Scene): string {
 
 const STYLE_PROMPT_SUFFIX: Record<Exclude<VideoStyle, "realistic">, string> = {
   "whiteboard-doodle":
-    "hand-drawn doodle sketch, whiteboard marker illustration, black ink line art on plain white background, simple explainer-video style, no color",
+    "hand-drawn doodle sketch, whiteboard marker illustration, black ink line art on plain white background, simple explainer-video style, no color, highly detailed linework, professional illustration",
   cartoon:
-    "flat 2D cartoon illustration, bold clean outlines, vibrant simple colors, animated explainer-video style, minimal background detail",
+    "flat 2D cartoon illustration, bold clean outlines, vibrant simple colors, animated explainer-video style, highly detailed, professional character design, rich background detail",
 };
 
 /**
@@ -144,7 +144,12 @@ async function generateIllustratedVisualsForScene(
 ): Promise<VisualAsset[]> {
   fs.mkdirSync(outDir, { recursive: true });
   const baseSeed = styleSeed ?? deriveStyleSeed(scene.visualPrompt);
-  const basePrompt = `${searchQuery(scene) || scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
+  // Unlike Pixabay's keyword search (which wants a short, punchy query —
+  // see searchQuery()), Pollinations is generative and benefits from the
+  // FULL descriptive prompt Groq wrote for the scene. Using the
+  // truncated search-style query here was cutting real detail out of
+  // every illustration.
+  const basePrompt = `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
   const shotVariants = ["", ", wide establishing shot", ", close-up detail"];
 
   const assets: VisualAsset[] = [];
@@ -189,34 +194,52 @@ async function generateIllustratedVisualsForScene(
 }
 
 /** Searches Pixabay's video library and downloads up to `count` matching clips. */
+async function searchPixabayVideos(
+  query: string,
+  apiKey: string,
+  count: number
+): Promise<{ videos: Record<string, { url: string; width: number; height: number }> }[]> {
+  const url =
+    `https://pixabay.com/api/videos/?key=${apiKey}` +
+    `&q=${encodeURIComponent(query)}&per_page=${Math.max(count, 3)}&safesearch=true`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Pixabay video search failed: ${res.status}`);
+  const data = await res.json();
+  return (data.hits ?? []) as { videos: Record<string, { url: string; width: number; height: number }> }[];
+}
+
 async function fetchPixabayVideos(
   scene: Scene,
   outDir: string,
   apiKey: string,
   count: number
 ): Promise<VisualAsset[]> {
-  const query = searchQuery(scene);
-  const url =
-    `https://pixabay.com/api/videos/?key=${apiKey}` +
-    `&q=${encodeURIComponent(query)}&per_page=${Math.max(count, 3)}&safesearch=true`;
+  const primaryQuery = searchQuery(scene);
+  let hits = await searchPixabayVideos(primaryQuery, apiKey, count);
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Pixabay video search failed: ${res.status}`);
+  // Broader retry: Pixabay's search is literal keyword matching, so a
+  // specific multi-word query can come back empty even when a simpler
+  // version of the same idea has plenty of footage. Try just the first
+  // one or two words before giving up on video entirely and dropping to
+  // photos — a real (if less specific) video clip beats a static photo.
+  if (hits.length === 0) {
+    const broaderQuery = primaryQuery.split(" ").slice(0, 2).join(" ");
+    if (broaderQuery && broaderQuery !== primaryQuery) {
+      hits = await searchPixabayVideos(broaderQuery, apiKey, count);
+    }
+  }
 
-  const data = await res.json();
-  const hits = (data.hits ?? []) as {
-    videos: Record<string, { url: string; width: number; height: number }>;
-  }[];
   if (hits.length === 0) return [];
 
   fs.mkdirSync(outDir, { recursive: true });
   const assets: VisualAsset[] = [];
 
   for (let i = 0; i < Math.min(count, hits.length); i++) {
-    // "medium" balances real quality against download size on a
-    // resource-limited free host — "large" is often 1080p+ and risks
-    // the same kind of memory pressure that caused the zoompan OOM crash.
-    const variant = hits[i].videos.medium || hits[i].videos.small || hits[i].videos.large;
+    // The instance now has real RAM headroom (2GB, up from the original
+    // 512MB free tier), so prefer "large" (often 1080p) for a visibly
+    // sharper result — falling back to medium/small only if a hit
+    // doesn't have a large variant available.
+    const variant = hits[i].videos.large || hits[i].videos.medium || hits[i].videos.small;
     if (!variant) continue;
 
     const outPath = path.join(outDir, `scene-${scene.index}-${i}.mp4`);
