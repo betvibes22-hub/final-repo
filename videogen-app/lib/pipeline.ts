@@ -6,7 +6,8 @@ import { buildScriptFromCustomText } from "./providers/customScript";
 import { generateVoiceover } from "./providers/tts";
 import { generateVisualsForScene, deriveStyleSeed } from "./providers/visuals";
 import { composeVideo } from "./providers/compose";
-import { uploadVideo, uploadAudioPreview } from "./providers/storage";
+import { uploadVideo, uploadAudioPreview, uploadThumbnail } from "./providers/storage";
+import { generateVideoMetadata, generateThumbnail } from "./providers/metadata";
 
 /**
  * The full script → voiceover → visuals → compose → upload pipeline,
@@ -94,5 +95,39 @@ export async function runPipeline(jobId: string) {
     logActivity(jobId, text, "cloudinary")
   );
 
-  updateJob(jobId, { status: "done", outputVideoPath: videoUrl, progressNote: "Done!" });
+  // Metadata package (title/description/tags/thumbnail) — best-effort:
+  // a failure here shouldn't fail the whole job, the video itself is
+  // already done and saved.
+  let metaTitle: string | undefined;
+  let metaDescription: string | undefined;
+  let metaTags: string[] | undefined;
+  let thumbnailUrl: string | undefined;
+  try {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (apiKey) {
+      const meta = await generateVideoMetadata(script, apiKey, (text, service) =>
+        logActivity(jobId, text, service)
+      );
+      metaTitle = meta.title;
+      metaDescription = meta.description;
+      metaTags = meta.tags;
+
+      const thumbPath = await generateThumbnail(meta.thumbnailPrompt, jobDir, (text, service) =>
+        logActivity(jobId, text, service)
+      );
+      thumbnailUrl = await uploadThumbnail(thumbPath, (text) => logActivity(jobId, text, "cloudinary"));
+    }
+  } catch (err) {
+    console.error(`Metadata/thumbnail generation failed for job ${jobId} (non-fatal):`, err);
+  }
+
+  updateJob(jobId, {
+    status: "done",
+    outputVideoPath: videoUrl,
+    progressNote: "Done!",
+    metaTitle,
+    metaDescription,
+    metaTags,
+    thumbnailUrl,
+  });
 }
