@@ -1,9 +1,9 @@
-export type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
+export type VideoStyle = "whiteboard-doodle" | "cartoon" | "stickman" | "realistic";
 export type ScriptMode = "ai" | "custom" | "hybrid" | "remix";
 export type VoiceGender = "female" | "male";
 export type VoicePace = "slower" | "normal" | "faster";
 
-export type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype";
+export type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-explainer";
 
 export interface GenerateRequest {
   topic: string;
