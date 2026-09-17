@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { execFileSync } from "child_process";
+import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { Scene, VideoStyle, VisualAsset } from "../types";
 import { downloadToFile } from "./download";
 
@@ -261,31 +263,63 @@ async function fetchPexelsPhotos(
   return assets;
 }
 
-function generatePlaceholderFrame(scene: Scene, outDir: string): VisualAsset {
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, `scene-${scene.index}-0.svg`);
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
-  <rect width="1920" height="1080" fill="#ffffff"/>
-  <rect x="40" y="40" width="1840" height="1000" fill="none" stroke="#111111" stroke-width="4"/>
-  <text x="960" y="500" font-family="Comic Sans MS, cursive" font-size="48"
-        fill="#111111" text-anchor="middle">
-    ${escapeXml(scene.visualPrompt).slice(0, 80)}
-  </text>
-</svg>`.trim();
-  fs.writeFileSync(outPath, svg);
-  return { path: outPath, type: "image" };
+const PLACEHOLDER_FONT_PATH = path.join(process.cwd(), "assets", "caption-font.ttf");
+
+function wrapPlaceholderText(text: string, maxCharsPerLine = 36): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxCharsPerLine && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, 6).join("\n");
 }
 
-function escapeXml(s: string): string {
-  return s.replace(/[<>&'"]/g, (c) => {
-    switch (c) {
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case "&": return "&amp;";
-      case "'": return "&apos;";
-      case '"': return "&quot;";
-      default: return c;
-    }
-  });
+/**
+ * Renders a plain white frame with the scene's visual prompt as text —
+ * the last-resort fallback when every real image/video source failed.
+ *
+ * This used to write an .svg file, which reads as an image to a human
+ * but is NOT something the bundled ffmpeg binary can decode as a video
+ * input (it has no SVG decoder compiled in) — composeVideo would crash
+ * with "Decoder (codec svg) not found" the moment a placeholder was
+ * actually needed. Rendering it as a real PNG via ffmpeg itself (same
+ * drawtext+textfile pattern already proven for captions) guarantees
+ * whatever comes out is something ffmpeg can always read back in.
+ */
+function generatePlaceholderFrame(scene: Scene, outDir: string): VisualAsset {
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, `scene-${scene.index}-0.png`);
+  const textPath = path.join(outDir, `scene-${scene.index}-placeholder-text.txt`);
+  fs.writeFileSync(textPath, wrapPlaceholderText(scene.visualPrompt), "utf-8");
+
+  const drawtext =
+    `drawtext=fontfile='${PLACEHOLDER_FONT_PATH}':textfile='${textPath}':` +
+    `fontsize=48:fontcolor=#111111:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=10`;
+
+  try {
+    execFileSync(
+      ffmpegPath.path,
+      ["-y", "-f", "lavfi", "-i", "color=c=white:s=1920x1080", "-vf", drawtext, "-frames:v", "1", outPath],
+      { timeout: 20_000 }
+    );
+  } catch (err) {
+    // If drawtext itself somehow fails, fall back to a blank white
+    // frame with no text rather than crash the whole video.
+    console.error("Placeholder drawtext render failed, using blank frame:", err);
+    execFileSync(
+      ffmpegPath.path,
+      ["-y", "-f", "lavfi", "-i", "color=c=white:s=1920x1080", "-frames:v", "1", outPath],
+      { timeout: 20_000 }
+    );
+  }
+
+  return { path: outPath, type: "image" };
 }
