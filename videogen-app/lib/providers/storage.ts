@@ -63,6 +63,48 @@ export async function uploadVideo(
 }
 
 /**
+ * Uploads a thumbnail image (the video's cover art). Same signed-upload
+ * pattern as the video/audio uploads above, just the image resource type.
+ */
+export async function uploadThumbnail(localPath: string, onLog?: (text: string) => void): Promise<string> {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    throw new Error("Cloudinary env vars missing. See .env.example.");
+  }
+
+  onLog?.("Cloudinary: uploading thumbnail");
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const paramsToSign = `folder=videogen-thumbnails&tags=videogen-thumbnail&timestamp=${timestamp}${apiSecret}`;
+  const signature = crypto.createHash("sha1").update(paramsToSign).digest("hex");
+
+  const fileBuffer = fs.readFileSync(localPath);
+  const form = new FormData();
+  form.append("file", new Blob([fileBuffer]), "thumbnail.jpg");
+  form.append("api_key", apiKey);
+  form.append("timestamp", String(timestamp));
+  form.append("signature", signature);
+  form.append("folder", "videogen-thumbnails");
+  form.append("tags", "videogen-thumbnail");
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Cloudinary thumbnail upload failed: ${res.status} ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  onLog?.("Cloudinary: thumbnail stored");
+  return data.secure_url as string;
+}
+
+/**
  * Uploads just the voiceover MP3 for preview (so it can be played in the
  * browser during the voice-approval checkpoint). Tagged separately from
  * final videos — not shown in the past-videos library, this is just a
