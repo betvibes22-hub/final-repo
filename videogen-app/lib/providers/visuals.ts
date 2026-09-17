@@ -115,10 +115,25 @@ export function deriveStyleSeed(title: string): number {
  * styles — the actual "artbase.ai vibe" ask. Pollinations.ai (already
  * used elsewhere in this app for the background) is genuinely free, no
  * key, no card — no paid image-generation service was introduced for
- * this. One illustration per scene, no motion applied yet: Ken
- * Burns/pan-zoom is being reintroduced as its own separate, isolated,
- * tested change (same discipline as captions) rather than bundled in
- * here, since zoompan is what caused the earlier OOM crash.
+ * this.
+ *
+ * Generates CLIPS_PER_SCENE illustrations per scene (not just one) so
+ * illustrated scenes cut between shots the same way stock-media scenes
+ * already do, rather than holding one flat picture for the whole scene.
+ * Each shot gets its own seed (base seed + offset) and a small prompt
+ * variation so they read as different angles on the same idea instead
+ * of literal duplicates, while staying in the same overall style family.
+ *
+ * Each shot gets one retry on failure — Pollinations occasionally
+ * returns a 500, and without a retry that whole shot silently becomes a
+ * blank placeholder frame, which is part of what made an early test run
+ * look "weird."
+ *
+ * Ken Burns/pan-zoom motion is still NOT applied here — that's being
+ * built as its own separate, isolated, tested change (same discipline
+ * as captions) rather than bundled in here, since zoompan is what
+ * caused the earlier OOM crash and deserves its own verification pass
+ * now that there's more headroom (2GB RAM) to test it against.
  */
 async function generateIllustratedVisualsForScene(
   scene: Scene,
@@ -128,24 +143,49 @@ async function generateIllustratedVisualsForScene(
   styleSeed?: number
 ): Promise<VisualAsset[]> {
   fs.mkdirSync(outDir, { recursive: true });
-  const seed = styleSeed ?? deriveStyleSeed(scene.visualPrompt);
-  const prompt = `${searchQuery(scene) || scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
-  const url =
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-    `?width=1920&height=1080&seed=${seed}&nologo=true`;
+  const baseSeed = styleSeed ?? deriveStyleSeed(scene.visualPrompt);
+  const basePrompt = `${searchQuery(scene) || scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
+  const shotVariants = ["", ", wide establishing shot", ", close-up detail"];
 
-  onLog?.(`Pollinations: generating ${style} illustration for scene ${scene.index + 1}`, "pollinations");
+  const assets: VisualAsset[] = [];
 
-  const outPath = path.join(outDir, `scene-${scene.index}-illustrated.jpg`);
-  try {
-    await downloadToFile(url, outPath);
-    onLog?.(`Pollinations: illustration ready for scene ${scene.index + 1}`, "pollinations");
-    return [{ path: outPath, type: "image" }];
-  } catch (err) {
-    console.error(`Pollinations illustration failed for scene ${scene.index}, using placeholder:`, err);
-    onLog?.(`Pollinations: generation failed for scene ${scene.index + 1}, using placeholder`, "pollinations");
+  for (let i = 0; i < Math.min(CLIPS_PER_SCENE, shotVariants.length); i++) {
+    const seed = baseSeed + i;
+    const prompt = `${basePrompt}${shotVariants[i]}`;
+    const outPath = path.join(outDir, `scene-${scene.index}-illustrated-${i}.jpg`);
+    const url =
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+      `?width=1920&height=1080&seed=${seed}&nologo=true`;
+
+    let succeeded = false;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        onLog?.(
+          `Pollinations: generating ${style} illustration for scene ${scene.index + 1}` +
+            ` (shot ${i + 1}/${Math.min(CLIPS_PER_SCENE, shotVariants.length)}${attempt > 1 ? ", retrying" : ""})`,
+          "pollinations"
+        );
+        await downloadToFile(url, outPath);
+        assets.push({ path: outPath, type: "image" });
+        succeeded = true;
+        break;
+      } catch (err) {
+        console.error(`Pollinations illustration failed (scene ${scene.index}, shot ${i}, attempt ${attempt}):`, err);
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    if (!succeeded) {
+      onLog?.(`Pollinations: shot ${i + 1} failed twice for scene ${scene.index + 1}, skipping it`, "pollinations");
+    }
+  }
+
+  if (assets.length === 0) {
+    onLog?.(`Pollinations: every illustration failed for scene ${scene.index + 1}, using placeholder`, "pollinations");
     return [generatePlaceholderFrame(scene, outDir)];
   }
+
+  onLog?.(`Pollinations: ${assets.length} illustration(s) ready for scene ${scene.index + 1}`, "pollinations");
+  return assets;
 }
 
 /** Searches Pixabay's video library and downloads up to `count` matching clips. */
