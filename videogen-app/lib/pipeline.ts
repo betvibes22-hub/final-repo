@@ -80,7 +80,8 @@ export async function runPipeline(jobId: string) {
       jobDir,
       job.request.style,
       (text, service) => logActivity(jobId, text, service),
-      styleSeed
+      styleSeed,
+      job.request.styleVariant
     );
   }
   updateJob(jobId, { script });
