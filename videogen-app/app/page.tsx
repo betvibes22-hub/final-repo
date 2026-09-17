@@ -176,6 +176,7 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState(false);
+  const [regeneratingScene, setRegeneratingScene] = useState<number | null>(null);
   const [voicePreviewError, setVoicePreviewError] = useState<string | null>(null);
   const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [library, setLibrary] = useState<LibraryVideo[]>([]);
@@ -272,6 +273,27 @@ export default function Home() {
         if (data.status === "done") loadLibrary();
       }
     }, 2000);
+  }
+
+  async function handleRegenerateScene(sceneIndex: number) {
+    if (!job) return;
+    setRegeneratingScene(sceneIndex);
+    try {
+      const res = await fetch("/api/regenerate-scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: job.id, sceneIndex }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Couldn't redo that scene.");
+      }
+      startPolling(job.id);
+    } catch (err) {
+      // Surface it the same way a failed generation shows up.
+      setJob({ ...job, error: err instanceof Error ? err.message : String(err) });
+    }
+    setRegeneratingScene(null);
   }
 
   async function handleApprove(stage: string, decision: "approve" | "regenerate" = "approve") {
@@ -524,6 +546,49 @@ export default function Home() {
                   >
                     Download
                   </a>
+
+                  {job.script && job.script.scenes.length > 0 && (
+                    <div style={{ marginTop: 24 }}>
+                      <p style={{ fontSize: 12, letterSpacing: 0.5, textTransform: "uppercase", color: "#8a8474", marginBottom: 10 }}>
+                        Not happy with a scene? Redo just that one
+                      </p>
+                      {job.script.scenes.map((scene, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            padding: "10px 0",
+                            borderTop: i === 0 ? "none" : "1px solid rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          <p style={{ fontSize: 13, color: "#cfc9ba", margin: 0, flex: 1 }}>
+                            <span style={{ color: "#8a8474" }}>Scene {i + 1}:</span> {scene.text}
+                          </p>
+                          <button
+                            onClick={() => handleRegenerateScene(i)}
+                            disabled={regeneratingScene !== null}
+                            style={{
+                              flexShrink: 0,
+                              padding: "6px 12px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              background: "transparent",
+                              color: "#d4af37",
+                              border: "1px solid #d4af37",
+                              borderRadius: 6,
+                              cursor: regeneratingScene !== null ? "default" : "pointer",
+                              opacity: regeneratingScene !== null ? 0.5 : 1,
+                            }}
+                          >
+                            {regeneratingScene === i ? "Redoing..." : "Redo"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>
