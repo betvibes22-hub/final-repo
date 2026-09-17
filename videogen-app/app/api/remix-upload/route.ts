@@ -5,7 +5,7 @@ import os from "os";
 import crypto from "crypto";
 import { execFileSync } from "child_process";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import { GenerateRequest, ScriptVibe, VideoStyle, VoiceGender, VoicePace } from "../../../lib/types";
+import { GenerateRequest, ScriptVibe, StyleVariant, VideoStyle, VoiceGender, VoicePace } from "../../../lib/types";
 import { createJob, setJobFailed, logActivity } from "../../../lib/jobs";
 import { runPipeline } from "../../../lib/pipeline";
 import { transcribeAudioGroq } from "../../../lib/providers/transcribe";
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
   }
 
   const style = (form.get("style") as VideoStyle) || "realistic";
+  const styleVariant = (form.get("styleVariant") as StyleVariant) || "default";
   const vibe = (form.get("vibe") as ScriptVibe) || "documentary";
   const targetLengthSeconds = Number(form.get("targetLengthSeconds")) || 45;
   const voiceGender = (form.get("voiceGender") as VoiceGender) || undefined;
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
     const request: GenerateRequest = {
       topic: "Remixed from an uploaded video",
       style,
+      styleVariant,
       vibe,
       targetLengthSeconds,
       scriptMode: "remix",
