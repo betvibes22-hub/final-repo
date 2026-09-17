@@ -57,6 +57,17 @@ export async function generateScriptGroq(
       ? `\n\nThe user wrote a rough draft below (${draftWordCount} words). It is a starting point ONLY — it is too short/thin on its own. Do NOT simply repeat, lightly rephrase, or return it unchanged. You MUST substantially rewrite and expand it to reach ~${targetWordCount} words: keep their core ideas, topic, and tone, but add narrative detail, concrete examples, transitions between beats, and depth on each point so it reads like a fully produced script, not a draft. If the draft doesn't specify a structure, write it as a well-paced explainer with a hook, build-up, and payoff. Their draft:\n"""\n${req.customScript.trim()}\n"""`
       : "";
 
+  // Remix mode: the user uploaded a video and wants "one like that,"
+  // remade. This is deliberately built as structural inspiration only —
+  // topic, pacing, beat order, how it hooks and pays off — never as
+  // wording to copy. The instruction below is explicit and repeated for
+  // a reason: reusing someone else's actual sentences would just be
+  // uncredited copying with extra steps, not a genuinely new video.
+  const remixBlock =
+    req.scriptMode === "remix" && req.remixTranscript?.trim()
+      ? `\n\nBelow is a transcript of a video the user wants to remake in their own style. Study its TOPIC, STRUCTURE, and PACING only — the order of ideas, how it opens, how it builds, how it lands. Do NOT copy, closely paraphrase, or lift any sentence or distinctive phrase from it. Write a completely ORIGINAL script, in your own words throughout, that covers similar ground with a similar shape but is not a reproduction of this one in any way. Treat the transcript as a structural reference, never as source text to quote from. Transcript:\n"""\n${req.remixTranscript.trim().slice(0, 6000)}\n"""`
+      : "";
+
   const vibe = req.vibe ?? "documentary";
   const vibeInstruction = VIBE_INSTRUCTIONS[vibe];
 
@@ -64,7 +75,7 @@ export async function generateScriptGroq(
 ${vibeInstruction}
 Output ONLY valid JSON matching this shape, no other text:
 {"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
-Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}`;
+Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}${remixBlock}`;
 
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
