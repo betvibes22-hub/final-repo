@@ -1,4 +1,4 @@
-import { ActivityLogEntry, Job, JobStatus } from "./types";
+import { ActivityLogEntry, Job, JobStatus, VoiceGender, VoicePace } from "./types";
 import { v4 as uuid } from "uuid";
 
 // In-memory store. Fine for local dev and testing.
@@ -80,10 +80,34 @@ export function waitForApproval(jobId: string, stage: string): Promise<ApprovalD
   });
 }
 
-export function approveStage(jobId: string, stage: string, decision: ApprovalDecision): boolean {
+export function approveStage(
+  jobId: string,
+  stage: string,
+  decision: ApprovalDecision,
+  voiceOverride?: { voiceGender?: VoiceGender; voiceName?: string; voicePace?: VoicePace }
+): boolean {
   const key = `${jobId}:${stage}`;
   const resolve = pendingApprovals.get(key);
   if (!resolve) return false;
+
+  // Regenerating the voice with a different voice/pace than originally
+  // chosen — apply it to the job's request before the pipeline picks
+  // back up, so the next attempt actually uses the new selection
+  // instead of silently repeating the old one.
+  if (stage === "voice" && decision === "regenerate" && voiceOverride) {
+    const job = jobs.get(jobId);
+    if (job) {
+      updateJob(jobId, {
+        request: {
+          ...job.request,
+          ...(voiceOverride.voiceGender ? { voiceGender: voiceOverride.voiceGender } : {}),
+          ...(voiceOverride.voiceName ? { voiceName: voiceOverride.voiceName } : {}),
+          ...(voiceOverride.voicePace ? { voicePace: voiceOverride.voicePace } : {}),
+        },
+      });
+    }
+  }
+
   pendingApprovals.delete(key);
   resolve(decision);
   return true;
