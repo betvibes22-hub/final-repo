@@ -25,16 +25,18 @@ export async function runPipeline(jobId: string) {
   // "Try again" instead of "Approve" — same generation call, just
   // repeated, so a regenerate always gets a fresh attempt.
   let script;
+  let scriptAttempt = 0;
   while (true) {
     setJobStatus(jobId, "writing_script", "Writing the script...");
     script =
       job.request.scriptMode === "custom"
         ? buildScriptFromCustomText(job.request.customScript!, job.request)
-        : await generateScriptGroq(job.request, (text, service) => logActivity(jobId, text, service));
+        : await generateScriptGroq(job.request, (text, service) => logActivity(jobId, text, service), scriptAttempt);
     updateJob(jobId, { script });
 
     const decision = await waitForApproval(jobId, "script");
     if (decision === "approve") break;
+    scriptAttempt++;
   }
 
   // ── Voiceover ───────────────────────────────────────────
