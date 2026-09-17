@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 
-type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
-type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype";
+type VideoStyle = "whiteboard-doodle" | "cartoon" | "stickman" | "realistic";
+type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-explainer";
 type ScriptMode = "ai" | "custom" | "hybrid";
 type VoiceGender = "female" | "male";
 type VoicePace = "slower" | "normal" | "faster";
@@ -427,11 +427,13 @@ export default function Home() {
             <option value="storytime">Storytime / Relatable</option>
             <option value="hype">Hype / High-energy hook</option>
             <option value="documentary">Documentary / Serious</option>
+            <option value="viral-explainer">Viral Explainer (evidence-dense, cold open, callbacks)</option>
           </select>
 
           <label style={labelStyle}>Style</label>
           <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)} style={inputStyle}>
             <option value="whiteboard-doodle">Whiteboard / Doodle</option>
+            <option value="stickman">Stickman Explainer</option>
             <option value="cartoon">Cartoon</option>
             <option value="realistic">Realistic</option>
           </select>
