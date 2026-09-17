@@ -184,6 +184,9 @@ export default function Home() {
   const [remixFile, setRemixFile] = useState<File | null>(null);
   const [remixSubmitting, setRemixSubmitting] = useState(false);
   const [remixError, setRemixError] = useState<string | null>(null);
+  const [ideaNiche, setIdeaNiche] = useState("ancient-humans");
+  const [ideas, setIdeas] = useState<{ title: string; reason: string }[]>([]);
+  const [ideasLoading, setIdeasLoading] = useState(false);
   const [voicePreviewError, setVoicePreviewError] = useState<string | null>(null);
   const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [library, setLibrary] = useState<LibraryVideo[]>([]);
@@ -280,6 +283,23 @@ export default function Home() {
         if (data.status === "done") loadLibrary();
       }
     }, 2000);
+  }
+
+  async function handleSuggestIdeas() {
+    setIdeasLoading(true);
+    try {
+      const res = await fetch("/api/suggest-ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ niche: ideaNiche }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't generate ideas.");
+      setIdeas(data.ideas || []);
+    } catch (err) {
+      console.error(err);
+    }
+    setIdeasLoading(false);
   }
 
   async function handleRemixSubmit() {
@@ -399,6 +419,60 @@ export default function Home() {
 
           {scriptMode !== "custom" && (
             <>
+              <div style={{ marginBottom: 16, padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }}>
+                <label style={{ ...labelStyle, marginBottom: 8 }}>Need an idea? Pick a niche</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: ideas.length > 0 ? 12 : 0 }}>
+                  <select value={ideaNiche} onChange={(e) => setIdeaNiche(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: "1 1 200px" }}>
+                    <option value="ancient-humans">Ancient humans / survival</option>
+                    <option value="forbidden-food">Forbidden food / predator-meat</option>
+                    <option value="psychology">Psychology / named phenomena</option>
+                    <option value="dark-history">Dark or brutal history</option>
+                    <option value="space">Space & unexplained mysteries</option>
+                    <option value="animal-behavior">Animal behavior / predator-prey</option>
+                  </select>
+                  <button
+                    onClick={handleSuggestIdeas}
+                    disabled={ideasLoading}
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      background: "transparent",
+                      color: "#d4af37",
+                      border: "1px solid #d4af37",
+                      borderRadius: 8,
+                      cursor: ideasLoading ? "default" : "pointer",
+                      opacity: ideasLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {ideasLoading ? "Thinking..." : "Suggest 5 ideas"}
+                  </button>
+                </div>
+                {ideas.map((idea, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setTopic(idea.title);
+                      setIdeas([]);
+                    }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "10px 12px",
+                      marginBottom: 8,
+                      background: "rgba(212,175,55,0.06)",
+                      border: "1px solid rgba(212,175,55,0.25)",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#f2eee3" }}>{idea.title}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9d9784" }}>{idea.reason}</p>
+                  </button>
+                ))}
+              </div>
+
               <label style={labelStyle}>Topic</label>
               <textarea
                 value={topic}
