@@ -1,21 +1,49 @@
+import fs from "fs";
+import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { Script, VisualAsset } from "../types";
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
+const CAPTION_FONT_PATH = path.join(process.cwd(), "assets", "caption-font.ttf");
+
+/** Wraps narration text to a max line width so drawtext doesn't run off the frame. */
+function wrapCaption(text: string, maxCharsPerLine = 42): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxCharsPerLine && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.join("\n");
+}
+
 /**
  * Stitches every scene's visual asset(s) + the full voiceover MP3 into
- * one MP4. Each segment can be either a real video clip (Pixabay) or a
- * static image (a fallback when no video match existed) — they need
- * different ffmpeg input handling, so each segment carries its type.
+ * one MP4, with burned-in captions. Each segment can be either a real
+ * video clip (Pixabay) or a static image (a fallback when no video
+ * match existed) — they need different ffmpeg input handling, so each
+ * segment carries its type.
  *
- * Deliberately simple otherwise: scale/crop + straight concat, no
- * captions, no crossfade transitions. Both were tried together once
- * before and failed with a generic ffmpeg filter-init error — reverted
- * to this known-working baseline rather than guess further. Reintroduce
- * captions and crossfades ONE AT A TIME, each verified working on its
- * own, before combining them again.
+ * Captions use drawtext with `textfile=` (one small .txt per scene)
+ * rather than passing the narration inline as `text=...` — ffmpeg's
+ * filtergraph syntax needs colons, commas, and quotes inside filter
+ * option values escaped, and real narration text is full of exactly
+ * those characters. Reading from a file sidesteps that escaping
+ * entirely, which is almost certainly what caused the earlier generic
+ * filter-init error when captions were first tried.
+ *
+ * Crossfade transitions were reverted alongside captions before and
+ * are NOT reintroduced here — that's a separate, isolated change to
+ * verify on its own once captions alone are confirmed stable.
  */
 export async function composeVideo(
   script: Script,
@@ -25,20 +53,25 @@ export async function composeVideo(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const command = ffmpeg();
+    const workDir = path.dirname(outputPath);
 
-    const segments: { asset: VisualAsset; duration: number }[] = [];
+    const segments: { asset: VisualAsset; duration: number; captionPath: string }[] = [];
     for (const scene of script.scenes) {
       const assets = scene.visualAssetPaths ?? [];
       if (assets.length === 0) {
         throw new Error(`Scene ${scene.index} has no visualAssetPaths — generate visuals first.`);
       }
+
+      const captionPath = path.join(workDir, `caption-${scene.index}.txt`);
+      fs.writeFileSync(captionPath, wrapCaption(scene.text), "utf-8");
+
       const perAsset = scene.durationSeconds / assets.length;
       for (const asset of assets) {
-        segments.push({ asset, duration: perAsset });
+        segments.push({ asset, duration: perAsset, captionPath });
       }
     }
 
-    onLog?.(`FFmpeg: compositing ${segments.length} clip(s) across ${script.scenes.length} scene(s)`);
+    onLog?.(`FFmpeg: compositing ${segments.length} clip(s) across ${script.scenes.length} scene(s) with captions`);
 
     for (const seg of segments) {
       // Video clips: loop indefinitely then trim to the exact segment
@@ -51,7 +84,7 @@ export async function composeVideo(
       command.input(seg.asset.path).inputOptions(inputOptions);
     }
 
-    const perSegmentFilters = segments.map((_, i) => buildSegmentFilter(i));
+    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.captionPath));
     const filterInputs = segments.map((_, i) => `[v${i}]`).join("");
     const filterComplex =
       perSegmentFilters.join(";") +
@@ -97,9 +130,12 @@ export async function composeVideo(
   });
 }
 
-function buildSegmentFilter(index: number): string {
+function buildSegmentFilter(index: number, captionPath: string): string {
   return (
     `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,` +
-    `crop=1920:1080,fps=24[v${index}]`
+    `crop=1920:1080,fps=24,` +
+    `drawtext=fontfile='${CAPTION_FONT_PATH}':textfile='${captionPath}':` +
+    `fontsize=52:fontcolor=white:borderw=3:bordercolor=black@0.8:` +
+    `x=(w-text_w)/2:y=h-220:line_spacing=6[v${index}]`
   );
 }
