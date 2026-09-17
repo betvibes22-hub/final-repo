@@ -6,7 +6,7 @@ import { createJob, setJobStatus, updateJob, setJobFailed, getJob, waitForApprov
 import { generateScriptGroq } from "../../../lib/providers/script-groq";
 import { buildScriptFromCustomText } from "../../../lib/providers/customScript";
 import { generateVoiceover } from "../../../lib/providers/tts";
-import { generateVisualsForScene } from "../../../lib/providers/visuals";
+import { generateVisualsForScene, deriveStyleSeed } from "../../../lib/providers/visuals";
 import { composeVideo } from "../../../lib/providers/compose";
 import { uploadVideo, uploadAudioPreview } from "../../../lib/providers/storage";
 
@@ -83,6 +83,11 @@ async function runPipeline(jobId: string) {
 
   // ── Visuals (no approval checkpoint — moves straight through) ──
   setJobStatus(jobId, "generating_visuals", "Selecting footage...");
+  // One seed per video (from the title) so every scene's AI illustration
+  // shares a similar look, rather than a differently-seeded random image
+  // each time — see deriveStyleSeed's docstring for what this can and
+  // can't achieve for a free, keyless image API.
+  const styleSeed = deriveStyleSeed(script.title);
   for (const scene of script.scenes) {
     setJobStatus(
       jobId,
@@ -93,7 +98,8 @@ async function runPipeline(jobId: string) {
       scene,
       jobDir,
       job.request.style,
-      (text, service) => logActivity(jobId, text, service)
+      (text, service) => logActivity(jobId, text, service),
+      styleSeed
     );
   }
   updateJob(jobId, { script });
