@@ -357,7 +357,18 @@ export default function Home() {
     await fetch("/api/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job.id, stage, decision }),
+      body: JSON.stringify({
+        jobId: job.id,
+        stage,
+        decision,
+        // Only matters for stage "voice" + decision "regenerate" — lets
+        // picking a different voice/pace at the checkpoint actually
+        // change what gets synthesized next, instead of silently
+        // repeating the original choice.
+        voiceGender,
+        voiceName,
+        voicePace,
+      }),
     });
     setApproving(false);
   }
@@ -634,12 +645,59 @@ export default function Home() {
               {job.status === "awaiting_approval" && job.awaitingStage === "voice" && job.voiceoverPreviewUrl && (
                 <div style={{ marginTop: 16 }}>
                   <audio controls style={{ width: "100%" }} src={job.voiceoverPreviewUrl} />
+
+                  <p style={{ fontSize: 12, color: "#8a8474", margin: "14px 0 6px" }}>
+                    Not the right voice? Change it and preview before trying again:
+                  </p>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                    <select
+                      value={voiceGender}
+                      onChange={(e) => {
+                        const g = e.target.value as VoiceGender;
+                        setVoiceGender(g);
+                        setVoiceName(VOICES_BY_GENDER[g][0].key);
+                      }}
+                      style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+                    >
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                    </select>
+                    <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
+                      {VOICES_BY_GENDER[voiceGender].map((v) => (
+                        <option key={v.key} value={v.key}>{v.name}</option>
+                      ))}
+                    </select>
+                    <select value={voicePace} onChange={(e) => setVoicePace(e.target.value as VoicePace)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
+                      <option value="slower">Slower</option>
+                      <option value="normal">Normal pace</option>
+                      <option value="faster">Faster</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={handlePreviewVoice}
+                    disabled={previewingVoice}
+                    style={{
+                      padding: "6px 14px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "transparent",
+                      color: "#d4af37",
+                      border: "1px solid #d4af37",
+                      borderRadius: 6,
+                      cursor: previewingVoice ? "default" : "pointer",
+                      marginBottom: 14,
+                    }}
+                  >
+                    {previewingVoice ? "Loading preview..." : "▶ Preview this voice & speed"}
+                  </button>
+                  {voicePreviewError && <p style={{ color: "#e08a8a", fontSize: 12, marginTop: -8, marginBottom: 14 }}>{voicePreviewError}</p>}
+
                   <div>
                     <button onClick={() => handleApprove("voice", "approve")} disabled={approving} style={approveBtnStyle}>
                       {approving ? "..." : "Approve voice & continue"}
                     </button>
                     <button onClick={() => handleApprove("voice", "regenerate")} disabled={approving} style={disapproveBtnStyle}>
-                      {approving ? "..." : "Try again"}
+                      {approving ? "..." : "Use this voice — try again"}
                     </button>
                   </div>
                 </div>
