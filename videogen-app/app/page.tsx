@@ -109,6 +109,21 @@ const SERVICE_META: Record<ActivityLogEntry["service"], { label: string; color: 
   cloudinary: { label: "Cloudinary (storage)", color: "#56ccf2" },
 };
 
+const QUICK_START_PRESETS: {
+  label: string;
+  style: VideoStyle;
+  styleVariant: StyleVariant;
+  vibe: ScriptVibe;
+  lengthSeconds: number;
+}[] = [
+  { label: "Sleep video", style: "cartoon", styleVariant: "watercolor", vibe: "sleep", lengthSeconds: 180 },
+  { label: "Storytelling", style: "cartoon", styleVariant: "ghibli", vibe: "storytime", lengthSeconds: 90 },
+  { label: "Stickman", style: "stickman", styleVariant: "default", vibe: "viral-explainer", lengthSeconds: 60 },
+  { label: "Doodle Character", style: "whiteboard-doodle", styleVariant: "default", vibe: "documentary", lengthSeconds: 60 },
+  { label: "Doodle Stickman", style: "stickman", styleVariant: "sketchy", vibe: "viral-explainer", lengthSeconds: 45 },
+  { label: "Top X", style: "cartoon", styleVariant: "vivid", vibe: "topx", lengthSeconds: 60 },
+];
+
 const ALL_SERVICES: ActivityLogEntry["service"][] = [
   "groq",
   "tavily",
@@ -434,6 +449,41 @@ export default function Home() {
 
           {scriptMode !== "custom" && (
             <>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ ...labelStyle, marginBottom: 8 }}>Quick Start</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {QUICK_START_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      onClick={() => {
+                        setStyle(preset.style);
+                        setStyleVariant(preset.styleVariant);
+                        setVibe(preset.vibe);
+                        setLengthSeconds(preset.lengthSeconds);
+                      }}
+                      style={{
+                        padding: "8px 14px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        background:
+                          style === preset.style && vibe === preset.vibe && styleVariant === preset.styleVariant
+                            ? "#d4af37"
+                            : "transparent",
+                        color:
+                          style === preset.style && vibe === preset.vibe && styleVariant === preset.styleVariant
+                            ? "#0b0a08"
+                            : "#cfc9ba",
+                        border: "1px solid rgba(212,175,55,0.4)",
+                        borderRadius: 20,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div style={{ marginBottom: 16, padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }}>
                 <label style={{ ...labelStyle, marginBottom: 8 }}>Need an idea? Pick a niche</label>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: ideas.length > 0 ? 12 : 0 }}>
