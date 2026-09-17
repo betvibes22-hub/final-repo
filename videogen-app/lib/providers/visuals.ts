@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { execFileSync } from "child_process";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import { Scene, VideoStyle, VisualAsset } from "../types";
+import { Scene, VideoStyle, VisualAsset, StyleVariant } from "../types";
 import { downloadToFile } from "./download";
 
 // Multiple clips cut between per scene, matching the faster short-form
@@ -29,10 +29,11 @@ export async function generateVisualsForScene(
   outDir: string,
   style: VideoStyle = "realistic",
   onLog?: (text: string, service: "pixabay" | "pexels" | "pollinations") => void,
-  styleSeed?: number
+  styleSeed?: number,
+  styleVariant?: StyleVariant
 ): Promise<VisualAsset[]> {
   if (style !== "realistic") {
-    return generateIllustratedVisualsForScene(scene, outDir, style, onLog, styleSeed);
+    return generateIllustratedVisualsForScene(scene, outDir, style, onLog, styleSeed, styleVariant);
   }
 
   const pixabayKey = process.env.PIXABAY_API_KEY;
@@ -101,6 +102,19 @@ const STYLE_PROMPT_SUFFIX: Record<Exclude<VideoStyle, "realistic">, string> = {
     "minimalist flat-color stickman doodle explainer style: perfect circle head with no neck, two small black dot eyes, thin black eyebrows, a single curved black line for the mouth, thin uniform black stick limbs, rounded black mitten hands with no fingers, rounded black mitten feet with no toes, flat solid color fills only, no gradients, no shading, no texture, clean uniform thin line weight, simple 2-3 layer flat-color background",
 };
 
+// Optional look modifier layered on top of the base style — additive,
+// not a replacement, so the underlying construction rules (e.g. the
+// stickman's circle head/dot eyes/stick limbs) still hold; this only
+// changes rendering treatment (palette, texture, linework weight).
+const STYLE_VARIANT_SUFFIX: Record<Exclude<StyleVariant, "default">, string> = {
+  ghibli: "soft painterly Ghibli-inspired color palette, warm gentle lighting, lightly textured backgrounds",
+  watercolor: "soft watercolor painting texture, gentle bleeding edges, muted natural palette",
+  crayon: "waxy crayon texture, visible hand-drawn strokes, warm childlike coloring-book energy",
+  sketchy: "loose sketchy linework, visible rough pencil/pen strokes, imperfect hand-drawn line quality",
+  vivid: "highly saturated vivid colors, bold high-contrast palette, punchy graphic energy",
+  cinematic: "cinematic lighting, dramatic shadow and highlight contrast, moody atmospheric depth",
+};
+
 /**
  * Derives one deterministic seed from the video's title so every scene's
  * illustration is generated with the same Pollinations seed. This is not
@@ -148,7 +162,8 @@ async function generateIllustratedVisualsForScene(
   outDir: string,
   style: Exclude<VideoStyle, "realistic">,
   onLog?: (text: string, service: "pollinations") => void,
-  styleSeed?: number
+  styleSeed?: number,
+  styleVariant?: StyleVariant
 ): Promise<VisualAsset[]> {
   fs.mkdirSync(outDir, { recursive: true });
   const baseSeed = styleSeed ?? deriveStyleSeed(scene.visualPrompt);
@@ -157,7 +172,9 @@ async function generateIllustratedVisualsForScene(
   // FULL descriptive prompt Groq wrote for the scene. Using the
   // truncated search-style query here was cutting real detail out of
   // every illustration.
-  const basePrompt = `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}`;
+  const variantSuffix =
+    styleVariant && styleVariant !== "default" ? `, ${STYLE_VARIANT_SUFFIX[styleVariant]}` : "";
+  const basePrompt = `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}${variantSuffix}`;
   const shotVariants = ["", ", wide establishing shot", ", close-up detail"];
 
   const assets: VisualAsset[] = [];
