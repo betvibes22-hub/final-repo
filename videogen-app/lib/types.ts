@@ -1,5 +1,5 @@
 export type VideoStyle = "whiteboard-doodle" | "cartoon" | "realistic";
-export type ScriptMode = "ai" | "custom" | "hybrid";
+export type ScriptMode = "ai" | "custom" | "hybrid" | "remix";
 export type VoiceGender = "female" | "male";
 export type VoicePace = "slower" | "normal" | "faster";
 
@@ -12,6 +12,11 @@ export interface GenerateRequest {
   targetLengthSeconds: number;
   scriptMode?: ScriptMode;
   customScript?: string;
+  // Set alongside scriptMode "remix" — the transcript of a video the
+  // user uploaded to remix. generateScriptGroq uses this as structural
+  // inspiration only (topic, pacing, beat structure) and is explicitly
+  // instructed not to reuse its actual wording — see script-groq.ts.
+  remixTranscript?: string;
   voiceGender?: VoiceGender;
   voiceName?: string;
   voicePace?: VoicePace;
