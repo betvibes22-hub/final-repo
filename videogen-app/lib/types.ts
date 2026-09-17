@@ -57,7 +57,7 @@ export interface ActivityLogEntry {
   text: string;
   // Which external service this line is about, so the frontend can
   // group/badge entries by service rather than just showing a flat list.
-  service: "groq" | "tavily" | "piper" | "voicerss" | "pixabay" | "pexels" | "ffmpeg" | "cloudinary";
+  service: "groq" | "tavily" | "piper" | "voicerss" | "pixabay" | "pexels" | "pollinations" | "ffmpeg" | "cloudinary";
 }
 
 export interface Job {
