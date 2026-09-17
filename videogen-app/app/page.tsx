@@ -33,6 +33,10 @@ interface JobState {
   error?: string;
   request?: { scriptMode?: ScriptMode };
   activityLog?: ActivityLogEntry[];
+  metaTitle?: string;
+  metaDescription?: string;
+  metaTags?: string[];
+  thumbnailUrl?: string;
 }
 
 interface LibraryVideo {
@@ -579,6 +583,39 @@ export default function Home() {
                   >
                     Download
                   </a>
+
+                  {(job.metaTitle || job.thumbnailUrl) && (
+                    <div style={{ marginTop: 24, padding: 16, background: "rgba(255,255,255,0.03)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }}>
+                      <p style={{ fontSize: 12, letterSpacing: 0.5, textTransform: "uppercase", color: "#8a8474", marginBottom: 12 }}>
+                        Ready to publish
+                      </p>
+                      {job.thumbnailUrl && (
+                        <img
+                          src={job.thumbnailUrl}
+                          alt="Thumbnail"
+                          style={{ width: "100%", maxWidth: 400, borderRadius: 6, marginBottom: 14, display: "block" }}
+                        />
+                      )}
+                      {job.metaTitle && (
+                        <div style={{ marginBottom: 12 }}>
+                          <p style={{ fontSize: 11, color: "#8a8474", margin: "0 0 4px" }}>Title</p>
+                          <p style={{ fontSize: 14, color: "#f2eee3", margin: 0, fontWeight: 600 }}>{job.metaTitle}</p>
+                        </div>
+                      )}
+                      {job.metaDescription && (
+                        <div style={{ marginBottom: 12 }}>
+                          <p style={{ fontSize: 11, color: "#8a8474", margin: "0 0 4px" }}>Description</p>
+                          <p style={{ fontSize: 13, color: "#cfc9ba", margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{job.metaDescription}</p>
+                        </div>
+                      )}
+                      {job.metaTags && job.metaTags.length > 0 && (
+                        <div>
+                          <p style={{ fontSize: 11, color: "#8a8474", margin: "0 0 4px" }}>Tags</p>
+                          <p style={{ fontSize: 12, color: "#9d9784", margin: 0 }}>{job.metaTags.join(", ")}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {job.script && job.script.scenes.length > 0 && (
                     <div style={{ marginTop: 24 }}>
