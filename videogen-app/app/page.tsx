@@ -177,6 +177,9 @@ export default function Home() {
   const [approving, setApproving] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState(false);
   const [regeneratingScene, setRegeneratingScene] = useState<number | null>(null);
+  const [remixFile, setRemixFile] = useState<File | null>(null);
+  const [remixSubmitting, setRemixSubmitting] = useState(false);
+  const [remixError, setRemixError] = useState<string | null>(null);
   const [voicePreviewError, setVoicePreviewError] = useState<string | null>(null);
   const voicePreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [library, setLibrary] = useState<LibraryVideo[]>([]);
@@ -273,6 +276,34 @@ export default function Home() {
         if (data.status === "done") loadLibrary();
       }
     }, 2000);
+  }
+
+  async function handleRemixSubmit() {
+    if (!remixFile) return;
+    setRemixSubmitting(true);
+    setRemixError(null);
+    try {
+      const form = new FormData();
+      form.append("video", remixFile);
+      form.append("style", style);
+      form.append("vibe", vibe);
+      form.append("targetLengthSeconds", String(lengthSeconds));
+      form.append("voiceGender", voiceGender);
+      form.append("voiceName", voiceName);
+      form.append("voicePace", voicePace);
+
+      const res = await fetch("/api/remix-upload", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Couldn't process that video.");
+      }
+      setJob({ id: data.jobId, status: "queued" });
+      startPolling(data.jobId);
+      setRemixFile(null);
+    } catch (err) {
+      setRemixError(err instanceof Error ? err.message : String(err));
+    }
+    setRemixSubmitting(false);
   }
 
   async function handleRegenerateScene(sceneIndex: number) {
@@ -612,6 +643,39 @@ export default function Home() {
               </div>
             ))}
           </div>
+
+          <div style={{ marginTop: 48, paddingTop: 32, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+            <h2 style={{ fontSize: 20, marginBottom: 6, color: "#f2eee3" }}>Remix a video</h2>
+            <p style={{ color: "#b8b2a0", fontSize: 13, marginBottom: 16 }}>
+              Upload a video and this makes an original one inspired by its topic and structure — same voice/style
+              settings as above, but its own script written from scratch, not a copy. Works best under a few
+              minutes long.
+            </p>
+            <input
+              type="file"
+              accept="video/*"
+              onChange={(e) => setRemixFile(e.target.files?.[0] ?? null)}
+              style={{ color: "#cfc9ba", fontSize: 13, marginBottom: 12, display: "block" }}
+            />
+            <button
+              onClick={handleRemixSubmit}
+              disabled={!remixFile || remixSubmitting}
+              style={{
+                padding: "10px 20px",
+                fontSize: 14,
+                fontWeight: 600,
+                background: remixFile ? "#d4af37" : "transparent",
+                color: remixFile ? "#0b0a08" : "#6b6656",
+                border: "1px solid #d4af37",
+                borderRadius: 8,
+                cursor: !remixFile || remixSubmitting ? "default" : "pointer",
+                opacity: remixSubmitting ? 0.6 : 1,
+              }}
+            >
+              {remixSubmitting ? "Uploading & transcribing..." : "Remix this video"}
+            </button>
+            {remixError && <p style={{ color: "#e08a8a", fontSize: 13, marginTop: 10 }}>{remixError}</p>}
+          </div>
         </main>
 
         {/* SIDEBAR: LIVE BOT ACTIVITY */}
@@ -751,7 +815,7 @@ export default function Home() {
 }
 
 const POWERED_BY = [
-  { name: "Groq", does: "Writes the script — a fast, free AI language model." },
+  { name: "Groq", does: "Writes the script, and transcribes uploaded videos for the remix feature." },
   { name: "Piper", does: "Self-hosted, open-source text-to-speech — 20 real voices, no API cap." },
   { name: "Pixabay", does: "Real stock video footage for Realistic-style videos, matched to each scene." },
   { name: "Pexels", does: "Backup photo source if Pixabay doesn't return a good match." },
