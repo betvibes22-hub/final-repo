@@ -95,6 +95,7 @@ export async function compileScene(
       animStyle: config.animStyle,
       headline: config.headline,
       subtext: config.subtext,
+      bgScene: config.bgScene,
       characters,
       zoomProgress: zoomNorm,
       entranceProgress,
