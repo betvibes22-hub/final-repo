@@ -4,18 +4,36 @@ import path from "path";
 import { execFileSync, execSync } from "child_process";
 import { downloadToFile } from "./download";
 
+/**
+ * Self-hosted, open-source TTS via Piper (MIT license) — chosen after
+ * hitting real caps on every free hosted TTS API tried so far
+ * (ElevenLabs blocked free API voice access entirely; VoiceRSS only
+ * actually has 5 English voices). Piper runs locally via Python/ONNX,
+ * so there's no request quota, no per-voice gating, and no risk of a
+ * "free tier" turning out to be a trial — it's just local compute.
+ *
+ * Confirmed viable on this Render service: python3 3.11 and pip3 are
+ * both present (see instrumentation.ts's boot diagnostic). piper-tts
+ * and its model files are installed/downloaded lazily on first use and
+ * cached for the life of the running instance, the same pattern
+ * already used for stock footage and fonts elsewhere in this app.
+ */
+
 export type VoiceGender = "female" | "male";
 export type VoicePace = "slower" | "normal" | "faster";
 
 interface PiperVoiceDef {
-  key: string;
+  key: string; // Piper's own voice key, e.g. "en_US-amy-medium"
   gender: VoiceGender;
-  displayName: string;
-  hfLang: string;
-  hfName: string;
-  hfQuality: string;
+  displayName: string; // shown in the picker
+  hfLang: string; // "en_US" | "en_GB" — path segment on Hugging Face
+  hfName: string; // e.g. "amy" — path segment
+  hfQuality: string; // "low" | "medium" | "high" — path segment
 }
 
+// Confirmed directly against rhasspy/piper-voices' official voices.json
+// (Hugging Face) — genders cross-checked against Piper's own model
+// cards / project docs, not guessed from names alone.
 const VOICES: PiperVoiceDef[] = [
   // Female
   { key: "en_US-amy-medium", gender: "female", displayName: "Amy", hfLang: "en_US", hfName: "amy", hfQuality: "medium" },
@@ -44,6 +62,8 @@ const VOICES: PiperVoiceDef[] = [
   { key: "en_US-kusal-medium", gender: "male", displayName: "Kusal", hfLang: "en_US", hfName: "kusal", hfQuality: "medium" },
 ];
 
+// Piper's own speed knob (< 1 faster, > 1 slower) — real parameter,
+// not a fake label, applied per voice per request.
 const PACE_LENGTH_SCALE: Record<VoicePace, string> = {
   slower: "1.25",
   normal: "",
@@ -52,7 +72,7 @@ const PACE_LENGTH_SCALE: Record<VoicePace, string> = {
 
 export interface VoiceOptions {
   gender?: VoiceGender;
-  voiceName?: string;
+  voiceName?: string; // a Piper voice `key` from VOICES; falls back to the first of that gender
   pace?: VoicePace;
 }
 
@@ -86,6 +106,12 @@ async function ensureVoiceModel(def: PiperVoiceDef): Promise<string> {
   const onnxUrl = `${base}/${def.key}.onnx`;
   const jsonUrl = `${base}/${def.key}.onnx.json`;
 
+  // Download to .tmp then rename into place — these files (the onnx model
+  // is 25-65MB) are checked into a persistent cache dir and reused across
+  // requests, so a connection that drops mid-download (as happened once
+  // in production) must never leave a partial file sitting at the real
+  // path, or every future request would treat it as a valid cached model
+  // and fail synthesis on a truncated file.
   const onnxTmp = `${onnxPath}.tmp`;
   const jsonTmp = `${jsonPath}.tmp`;
   try {
@@ -143,3 +169,7 @@ export async function generateVoiceoverPiper(
   if (!fs.existsSync(outPath)) {
     throw new Error("Piper synthesis did not produce an output file");
   }
+
+  onLog?.(`Piper: narration ready`);
+  return outPath;
+}
