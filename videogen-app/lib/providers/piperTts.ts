@@ -76,10 +76,8 @@ export interface VoiceOptions {
   pace?: VoicePace;
 }
 
-export function listAvailableVoices() {
-  const byGender: Record<VoiceGender, { key: string; displayName: string }[]> = { female: [], male: [] };
-  for (const v of VOICES) byGender[v.gender].push({ key: v.key, displayName: v.displayName });
-  return byGender;
+export function listAvailableVoices(): { key: string; name: string; gender: VoiceGender }[] {
+  return VOICES.map((v) => ({ key: v.key, name: v.displayName, gender: v.gender }));
 }
 
 const VOICE_CACHE_DIR = path.join(os.tmpdir(), "piper-voices");
