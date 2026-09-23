@@ -17,13 +17,22 @@ export interface GenerateRequest {
   targetLengthSeconds: number;
   scriptMode?: ScriptMode;
   customScript?: string;
+  // Set alongside scriptMode "remix" — the transcript of a video the
+  // user uploaded to remix. generateScriptGroq uses this as structural
+  // inspiration only (topic, pacing, beat structure) and is explicitly
+  // instructed not to reuse its actual wording — see script-groq.ts.
   remixTranscript?: string;
   voiceGender?: VoiceGender;
   voiceName?: string;
   voicePace?: VoicePace;
+  // "16:9" = standard landscape (1920×1080, default)
+  // "9:16" = vertical/Shorts (1080×1920 — drives FFmpeg output dims,
+  //           Pollinations image orientation, and Pixabay portrait filter)
   aspectRatio?: AspectRatio;
+  // "comparison" / "What's the Difference?" mode: A vs B
   conceptA?: string;
   conceptB?: string;
+  // "drama" / Short Drama mode — story premise, two lead characters, genre
   storyPremise?: string;
   characterA?: string;
   characterB?: string;
@@ -32,6 +41,10 @@ export interface GenerateRequest {
 
 export interface VisualAsset {
   path: string;
+  // Lets compose.ts pick the right ffmpeg input handling — video clips
+  // need to loop/trim as video, static images need the old -loop 1
+  // image behavior. Falls back to "image" (Pexels photo, or a plain
+  // placeholder) only when no real video match was found for a scene.
   type: "video" | "image";
 }
 
@@ -64,6 +77,8 @@ export type JobStatus =
 export interface ActivityLogEntry {
   ts: number;
   text: string;
+  // Which external service this line is about, so the frontend can
+  // group/badge entries by service rather than just showing a flat list.
   service: "groq" | "tavily" | "piper" | "voicerss" | "pixabay" | "pexels" | "pollinations" | "ffmpeg" | "cloudinary";
 }
 
@@ -75,14 +90,19 @@ export interface Job {
   voiceoverPath?: string;
   voiceoverPreviewUrl?: string;
   outputVideoPath?: string;
-  awaitingStage?: string;
+  awaitingStage?: string; // "script" | "voice" — which checkpoint we're paused at
   error?: string;
   createdAt: number;
   updatedAt: number;
   progressNote?: string;
+  // SEO metadata package — title/description/tags for publishing, plus
+  // a generated thumbnail. Optional since it's produced after the
+  // video itself, not required for the core pipeline to work.
   metaTitle?: string;
   metaDescription?: string;
   metaTags?: string[];
   thumbnailUrl?: string;
+  // Granular, timestamped log of every real external-service call made
+  // for this video — drives the detailed sidebar checklist.
   activityLog: ActivityLogEntry[];
 }
