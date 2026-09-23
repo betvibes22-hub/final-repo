@@ -15,9 +15,7 @@ import {
   approveStage as approveStageApi,
 } from "../lib/jobUiShared";
 
-type VideoStyle = "whiteboard-doodle" | "cartoon" | "stickman" | "realistic";
-type StyleVariant = "default" | "ghibli" | "watercolor" | "crayon" | "sketchy" | "vivid" | "cinematic";
-type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-explainer" | "topx" | "sleep";
+type VideoStyle = "cartoon" | "stickman";
 
 /**
  * Remix gets its own page (previously it was a section at the bottom of
@@ -32,10 +30,9 @@ type ScriptVibe = "documentary" | "fun-shorts" | "storytime" | "hype" | "viral-e
  */
 export default function RemixPage() {
   const [remixFile, setRemixFile] = useState<File | null>(null);
-  const [style, setStyle] = useState<VideoStyle>("whiteboard-doodle");
-  const [styleVariant, setStyleVariant] = useState<StyleVariant>("default");
-  const [vibe, setVibe] = useState<ScriptVibe>("documentary");
+  const [style, setStyle] = useState<VideoStyle>("cartoon");
   const [lengthSeconds, setLengthSeconds] = useState(60);
+  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
   const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
   const [voiceName, setVoiceName] = useState("en_US-amy-medium");
   const [voicePace, setVoicePace] = useState<VoicePace>("normal");
@@ -69,12 +66,11 @@ export default function RemixPage() {
       const form = new FormData();
       form.append("video", remixFile);
       form.append("style", style);
-      form.append("styleVariant", styleVariant);
-      form.append("vibe", vibe);
       form.append("targetLengthSeconds", String(lengthSeconds));
       form.append("voiceGender", voiceGender);
       form.append("voiceName", voiceName);
       form.append("voicePace", voicePace);
+      form.append("aspectRatio", aspectRatio);
 
       const res = await fetch("/api/remix-upload", { method: "POST", body: form });
       const data = await res.json();
@@ -166,38 +162,27 @@ export default function RemixPage() {
           />
 
           <label style={labelStyle}>Style</label>
-          <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)} style={inputStyle}>
-            <option value="whiteboard-doodle">Whiteboard / Doodle</option>
-            <option value="stickman">Stickman Explainer</option>
-            <option value="cartoon">Cartoon</option>
-            <option value="realistic">Realistic</option>
-          </select>
-
-          {style !== "realistic" && (
-            <>
-              <label style={labelStyle}>Look</label>
-              <select value={styleVariant} onChange={(e) => setStyleVariant(e.target.value as StyleVariant)} style={inputStyle}>
-                <option value="default">Default</option>
-                <option value="ghibli">Ghibli-inspired</option>
-                <option value="watercolor">Watercolor</option>
-                <option value="crayon">Crayon</option>
-                <option value="sketchy">Sketchy</option>
-                <option value="vivid">Vivid</option>
-                <option value="cinematic">Cinematic</option>
-              </select>
-            </>
-          )}
-
-          <label style={labelStyle}>Vibe</label>
-          <select value={vibe} onChange={(e) => setVibe(e.target.value as ScriptVibe)} style={inputStyle}>
-            <option value="documentary">Documentary / Explainer</option>
-            <option value="fun-shorts">Fun Shorts</option>
-            <option value="storytime">Storytime</option>
-            <option value="hype">Hype / High-energy hook</option>
-            <option value="topx">Top X / Countdown list</option>
-            <option value="sleep">Sleep / Calm ambient</option>
-            <option value="viral-explainer">Viral Explainer</option>
-          </select>
+          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+            {(["cartoon", "stickman"] as VideoStyle[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStyle(s)}
+                style={{
+                  flex: 1,
+                  padding: "12px 10px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  border: style === s ? "2px solid #d4af37" : "1px solid rgba(212,175,55,0.3)",
+                  background: style === s ? "rgba(212,175,55,0.12)" : "transparent",
+                  color: style === s ? "#d4af37" : "#9d9784",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+              >
+                {s === "cartoon" ? "🎨 Cartoon" : "🖊️ Stickman"}
+              </button>
+            ))}
+          </div>
 
           <label style={labelStyle}>Target length (seconds)</label>
           <input
@@ -208,6 +193,37 @@ export default function RemixPage() {
             onChange={(e) => setLengthSeconds(Number(e.target.value))}
             style={inputStyle}
           />
+
+          <label style={labelStyle}>Format</label>
+          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+            {(["16:9", "9:16"] as const).map((ratio) => (
+              <button
+                key={ratio}
+                onClick={() => setAspectRatio(ratio)}
+                style={{
+                  flex: 1,
+                  padding: "12px 10px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  border: aspectRatio === ratio ? "2px solid #d4af37" : "1px solid rgba(212,175,55,0.3)",
+                  background: aspectRatio === ratio ? "rgba(212,175,55,0.12)" : "transparent",
+                  color: aspectRatio === ratio ? "#d4af37" : "#9d9784",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span style={{ fontSize: 22 }}>{ratio === "16:9" ? "📺" : "📱"}</span>
+                <span>{ratio}</span>
+                <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>
+                  {ratio === "16:9" ? "Landscape · YouTube" : "Vertical · Shorts / TikTok"}
+                </span>
+              </button>
+            ))}
+          </div>
 
           <label style={labelStyle}>Voice</label>
           <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
