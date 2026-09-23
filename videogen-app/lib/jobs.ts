@@ -1,8 +1,44 @@
+import fs from "fs";
+import path from "path";
 import { ActivityLogEntry, Job, JobStatus, VoiceGender, VoicePace } from "./types";
 import { v4 as uuid } from "uuid";
 
-// In-memory store. Fine for local dev and testing.
-const jobs = new Map<string, Job>();
+// ---------------------------------------------------------------------------
+// Disk persistence — survives Node process crashes within the same Render
+// instance. Jobs are written through on every status change (not every
+// activity-log line, to keep writes cheap). On a full server restart caused
+// by a new deploy, in-flight jobs are lost (the pipeline thread is killed),
+// but completed jobs remain readable.
+// ---------------------------------------------------------------------------
+const JOBS_FILE = path.join(
+  process.env.JOBS_PERSIST_PATH || "/tmp",
+  "videogen-jobs.json"
+);
+
+function loadPersistedJobs(): Map<string, Job> {
+  try {
+    if (fs.existsSync(JOBS_FILE)) {
+      const raw = fs.readFileSync(JOBS_FILE, "utf-8");
+      const obj = JSON.parse(raw) as Record<string, Job>;
+      return new Map(Object.entries(obj));
+    }
+  } catch (e) {
+    console.warn("[jobs] Could not load persisted jobs:", (e as Error).message);
+  }
+  return new Map();
+}
+
+function persistJobs() {
+  try {
+    const obj = Object.fromEntries(jobs.entries());
+    fs.writeFileSync(JOBS_FILE, JSON.stringify(obj), "utf-8");
+  } catch (e) {
+    console.warn("[jobs] Could not persist jobs:", (e as Error).message);
+  }
+}
+
+// In-memory store, pre-seeded from disk on startup.
+const jobs = loadPersistedJobs();
 
 export type ApprovalDecision = "approve" | "regenerate";
 
@@ -23,6 +59,7 @@ export function createJob(request: Job["request"]): Job {
     activityLog: [],
   };
   jobs.set(job.id, job);
+  persistJobs();
   return job;
 }
 
@@ -35,6 +72,9 @@ export function updateJob(id: string, patch: Partial<Job>): Job | undefined {
   if (!existing) return undefined;
   const updated: Job = { ...existing, ...patch, updatedAt: Date.now() };
   jobs.set(id, updated);
+  // Only flush to disk on status transitions — activity-log lines are
+  // high-frequency and don't need to be durable mid-video.
+  if (patch.status !== undefined) persistJobs();
   return updated;
 }
 
@@ -58,7 +98,10 @@ export function logActivity(id: string, text: string, service: ActivityLogEntry[
   if (!existing) return undefined;
   const entry: ActivityLogEntry = { ts: Date.now(), text, service };
   const activityLog = [...existing.activityLog, entry].slice(-200);
-  return updateJob(id, { activityLog });
+  // Skip persistJobs() here — activity lines are fine to lose on crash.
+  const updated: Job = { ...existing, activityLog, updatedAt: Date.now() };
+  jobs.set(id, updated);
+  return updated;
 }
 
 /**
