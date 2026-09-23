@@ -17,7 +17,7 @@ import { generateVideoMetadata, generateThumbnail } from "./providers/metadata";
  */
 export async function runPipeline(jobId: string) {
   const jobDir = path.join(os.tmpdir(), "videogen", jobId);
-  const job = getJob(jobId);
+  let job = getJob(jobId);
   if (!job) throw new Error("Job disappeared");
 
   // ── Script ──────────────────────────────────────────────
@@ -35,6 +35,10 @@ export async function runPipeline(jobId: string) {
     updateJob(jobId, { script });
 
     const decision = await waitForApproval(jobId, "script");
+    // Re-fetch: approveStage() may have patched job.request (e.g. a voice
+    // change queued at a later checkpoint), and the pipeline must see that
+    // patch rather than keep working off the stale snapshot from job creation.
+    job = getJob(jobId) ?? job;
     if (decision === "approve") break;
     scriptAttempt++;
   }
@@ -59,6 +63,11 @@ export async function runPipeline(jobId: string) {
     updateJob(jobId, { voiceoverPath, voiceoverPreviewUrl });
 
     const decision = await waitForApproval(jobId, "voice");
+    // Same reason as above: approveStage() just applied the user's newly
+    // picked voice/pace into job.request when decision === "regenerate" —
+    // pick that up before looping back, or the redo would silently use the
+    // old voice again, which is exactly the bug this fixes.
+    job = getJob(jobId) ?? job;
     if (decision === "approve") break;
   }
 
@@ -81,7 +90,10 @@ export async function runPipeline(jobId: string) {
       job.request.style,
       (text, service) => logActivity(jobId, text, service),
       styleSeed,
-      job.request.styleVariant
+      job.request.styleVariant,
+      job.request.aspectRatio,
+      job.request.characterA,
+      job.request.characterB
     );
   }
   updateJob(jobId, { script });
@@ -90,7 +102,8 @@ export async function runPipeline(jobId: string) {
   setJobStatus(jobId, "composing", "Editing the final cut...");
   const localOutputPath = path.join(jobDir, "final.mp4");
   await composeVideo(script, voiceoverPath, localOutputPath, (text) =>
-    logActivity(jobId, text, "ffmpeg")
+    logActivity(jobId, text, "ffmpeg"),
+    job.request.aspectRatio
   );
 
   setJobStatus(jobId, "uploading", "Saving your video...");
