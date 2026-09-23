@@ -1,17 +1,44 @@
-import fs from "fs";
-import path from "path";
-import { generateVoiceoverPiper, listAvailableVoices as listPiperVoices, VoiceGender, VoicePace, VoiceOptions } from "./piperTts";
+/**
+ * Voiceover generation — public API for the pipeline.
+ *
+ * Priority:
+ *   1. ElevenLabs (ELEVENLABS_API_KEY set) — industry-standard TTS used by
+ *      Pictory, InVideo, Opus Clip and every major AI video platform.
+ *      Natural, expressive, broadcast-quality.
+ *   2. Piper (self-hosted, always available) — unlimited, no key required,
+ *      decent quality. Activated when ElevenLabs is unavailable or fails.
+ *
+ * VoiceRSS was the previous fallback; removed because its 5-voice free
+ * tier adds nothing that Piper (23 voices, unlimited) doesn't already cover.
+ */
+
+import {
+  VoiceGender,
+  VoicePace,
+  VoiceOptions,
+  generateVoiceoverPiper,
+  listAvailableVoices as listPiperVoices,
+} from "./piperTts";
+import {
+  generateVoiceoverElevenLabs,
+  isElevenLabsAvailable,
+  ELEVENLABS_VOICES,
+} from "./elevenLabsTts";
 
 export type { VoiceGender, VoicePace, VoiceOptions } from "./piperTts";
 
 /**
- * Voiceover generation — Piper (self-hosted, unlimited, 20 real voices)
- * is the primary path; see piperTts.ts for why. VoiceRSS remains here
- * purely as an automatic fallback if Piper's install/download/synthesis
- * fails for any reason on a given run, so a voiceover still gets made.
- * Its own 5-voice limit is the reason it's no longer primary.
+ * Returns the active voice catalog — ElevenLabs voices when the API key
+ * is present, otherwise Piper's 23-voice catalog.
  */
-export function listAvailableVoices() {
+export function listAvailableVoices(): { key: string; name: string; gender: VoiceGender }[] {
+  if (isElevenLabsAvailable()) {
+    return ELEVENLABS_VOICES.map((v) => ({
+      key: v.voiceId,
+      name: v.displayName,
+      gender: v.gender,
+    }));
+  }
   return listPiperVoices();
 }
 
@@ -19,73 +46,30 @@ export async function generateVoiceover(
   text: string,
   outDir: string,
   options: VoiceOptions = {},
-  onLog?: (text: string, service: "piper" | "voicerss") => void
+  onLog?: (text: string, service: "elevenlabs" | "piper" | "voicerss") => void
 ): Promise<string> {
-  try {
-    return await generateVoiceoverPiper(text, outDir, options, (t) => onLog?.(t, "piper"));
-  } catch (err) {
-    console.error("Piper TTS failed, falling back to VoiceRSS:", err);
-    onLog?.("Piper failed on this run, falling back to VoiceRSS", "voicerss");
-    return await generateVoiceoverVoiceRSS(text, outDir, options, onLog);
-  }
-}
-
-const VOICERSS_VOICES_BY_GENDER: Record<VoiceGender, string[]> = {
-  female: ["Linda", "Amy", "Mary"],
-  male: ["John", "Mike"],
-};
-
-const VOICERSS_PACE_RATE: Record<VoicePace, number> = {
-  slower: -3,
-  normal: 0,
-  faster: 3,
-};
-
-async function generateVoiceoverVoiceRSS(
-  text: string,
-  outDir: string,
-  options: VoiceOptions = {},
-  onLog?: (text: string, service: "piper" | "voicerss") => void
-): Promise<string> {
-  const apiKey = process.env.VOICERSS_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "Piper failed and VOICERSS_API_KEY is not set, so there's no fallback available. Get a free VoiceRSS key at voicerss.org/registration.aspx — see .env.example."
-    );
+  if (isElevenLabsAvailable()) {
+    try {
+      return await generateVoiceoverElevenLabs(
+        text,
+        outDir,
+        options,
+        (t) => onLog?.(t, "elevenlabs")
+      );
+    } catch (err) {
+      console.error("ElevenLabs TTS failed, falling back to Piper:", err);
+      onLog?.(
+        `ElevenLabs failed (${(err as Error).message}), falling back to Piper…`,
+        "elevenlabs"
+      );
+    }
   }
 
-  const gender = options.gender ?? "female";
-  const validNames = VOICERSS_VOICES_BY_GENDER[gender];
-  const voiceName = validNames[0]; // Piper voice names don't map to VoiceRSS's catalog
-  const rate = VOICERSS_PACE_RATE[options.pace ?? "normal"];
-
-  onLog?.(`VoiceRSS: synthesizing narration (voice: ${voiceName})`, "voicerss");
-
-  const params = new URLSearchParams({
-    key: apiKey,
-    src: text,
-    hl: "en-us",
-    v: voiceName,
-    r: String(rate),
-    c: "MP3",
-    f: "44khz_16bit_stereo",
-  });
-
-  const response = await fetch(`https://api.voicerss.org/?${params.toString()}`);
-
-  if (!response.ok) {
-    throw new Error(`VoiceRSS TTS failed: ${response.status} ${await response.text()}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-
-  const preview = Buffer.from(arrayBuffer.slice(0, 200)).toString("utf-8");
-  if (preview.startsWith("ERROR")) {
-    throw new Error(`VoiceRSS TTS failed: ${preview}`);
-  }
-
-  fs.mkdirSync(outDir, { recursive: true });
-  const outPath = path.join(outDir, "voiceover.mp3");
-  fs.writeFileSync(outPath, Buffer.from(arrayBuffer));
-  return outPath;
+  // Piper fallback — always available, no network dependency
+  return generateVoiceoverPiper(
+    text,
+    outDir,
+    options,
+    (t) => onLog?.(t, "piper")
+  );
 }
