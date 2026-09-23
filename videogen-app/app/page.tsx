@@ -25,7 +25,7 @@ export default function Home() {
   const [conceptA, setConceptA] = useState("");
   const [conceptB, setConceptB] = useState("");
   const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
-  const [voiceName, setVoiceName] = useState("en_US-amy-medium");
+  const [voiceName, setVoiceName] = useState(VOICES_BY_GENDER["female"][0].key);
   const [voicePace, setVoicePace] = useState<VoicePace>("normal");
   const [job, setJob] = useState<JobState | null>(null);
   const [submitting, setSubmitting] = useState(false);
