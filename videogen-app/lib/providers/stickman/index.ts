@@ -11,12 +11,15 @@
 
 import fs from "fs";
 import path from "path";
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { Scene, VisualAsset } from "../../types";
 import { interpretScene } from "./interpreter";
 import { compileScene } from "./compile";
 import { AnimStyle } from "./types";
+
+const execFileAsync = promisify(execFile);
 
 const CLIPS_PER_SCENE = 3;
 const FPS = 24;
@@ -28,10 +31,11 @@ const CLIP_DURATION_SECONDS = 2.5;
 const CROSS_DURATION = 0.25;
 
 /**
- * Combine multiple clips into one smooth video using FFmpeg xfade.
- * Each transition alternates between fade and slideleft for variety.
+ * Concatenate multiple clips into one video using FFmpeg concat filter.
+ * Uses the concat filter (available since ancient FFmpeg) instead of xfade
+ * (which requires FFmpeg 4.3+, not available in the bundled 2018 build).
  *
- * Returns the path of the combined clip, or null if xfade fails
+ * Returns the path of the combined clip, or null if concat fails
  * (caller falls back to returning the separate clips).
  */
 async function crossfadeClips(
@@ -42,39 +46,26 @@ async function crossfadeClips(
 ): Promise<string | null> {
   if (clipPaths.length <= 1) return clipPaths[0] ?? null;
 
-  // FFmpeg xfade transition names — cycle for variety
-  const TRANSITIONS = ["fade", "slideleft", "slideright"];
-
   const args: string[] = ["-y"];
   for (const p of clipPaths) {
     args.push("-i", p);
   }
 
-  // Build chained xfade filter_complex
-  // offset(i) = i * (clipDuration - crossDuration)
-  const filterParts: string[] = [];
-  let prevLabel = "0";
-
-  for (let i = 1; i < clipPaths.length; i++) {
-    const offset = (i * (CLIP_DURATION_SECONDS - CROSS_DURATION)).toFixed(3);
-    const transition = TRANSITIONS[(i - 1) % TRANSITIONS.length];
-    const isLast = i === clipPaths.length - 1;
-    const outLabel = isLast ? "vout" : `t${i}`;
-    filterParts.push(
-      `[${prevLabel}][${i}]xfade=transition=${transition}:duration=${CROSS_DURATION}:offset=${offset}[${outLabel}]`
-    );
-    prevLabel = outLabel;
-  }
+  // Build concat filter — works in all FFmpeg versions, no xfade needed
+  // e.g. 3 clips: [0][1][2]concat=n=3:v=1:a=0[vout]
+  const inputs = clipPaths.map((_, i) => `[${i}]`).join("");
+  const filterComplex = `${inputs}concat=n=${clipPaths.length}:v=1:a=0[vout]`;
 
   const combinedPath = path.join(outDir, `scene-${sceneIndex}-stickman-combined.mp4`);
-  onLog?.(`Stickman: crossfading ${clipPaths.length} clips with smooth transitions…`);
+  onLog?.(`Stickman: concatenating ${clipPaths.length} clips…`);
 
   try {
-    execFileSync(
+    // execFileAsync keeps the event loop alive during ffmpeg encoding
+    await execFileAsync(
       ffmpegPath.path,
       [
         ...args,
-        "-filter_complex", filterParts.join(";"),
+        "-filter_complex", filterComplex,
         "-map", "[vout]",
         "-c:v", "libx264",
         "-preset", "fast",
@@ -85,11 +76,11 @@ async function crossfadeClips(
       ],
       { timeout: 180_000 }
     );
-    onLog?.(`Stickman: combined clip ready (${clipPaths.length} clips crossfaded)`);
+    onLog?.(`Stickman: combined clip ready (${clipPaths.length} clips joined)`);
     return combinedPath;
   } catch (err) {
-    console.error(`Stickman: xfade failed for scene ${sceneIndex}:`, err);
-    onLog?.(`Stickman: crossfade failed — returning separate clips`);
+    console.error(`Stickman: concat failed for scene ${sceneIndex}:`, err);
+    onLog?.(`Stickman: concat failed — returning separate clips`);
     return null;
   }
 }
