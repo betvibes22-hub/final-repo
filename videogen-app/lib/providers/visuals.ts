@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { execFileSync } from "child_process";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import { Scene, VideoStyle, VisualAsset, StyleVariant } from "../types";
+import { Scene, VideoStyle, VisualAsset, StyleVariant, AspectRatio } from "../types";
 import { downloadToFile } from "./download";
 
 // Multiple clips cut between per scene, matching the faster short-form
@@ -27,71 +27,31 @@ const CLIPS_PER_SCENE = 3;
 export async function generateVisualsForScene(
   scene: Scene,
   outDir: string,
-  style: VideoStyle = "realistic",
+  style: VideoStyle = "cartoon",
   onLog?: (text: string, service: "pixabay" | "pexels" | "pollinations") => void,
   styleSeed?: number,
-  styleVariant?: StyleVariant
+  styleVariant?: StyleVariant,
+  aspectRatio?: AspectRatio
 ): Promise<VisualAsset[]> {
-  if (style !== "realistic") {
-    return generateIllustratedVisualsForScene(scene, outDir, style, onLog, styleSeed, styleVariant);
-  }
-
-  const pixabayKey = process.env.PIXABAY_API_KEY;
-  const log = (text: string, service: "pixabay" | "pexels") => onLog?.(text, service);
-
-  if (pixabayKey) {
-    try {
-      log(`Pixabay: searching video library for scene ${scene.index + 1} — "${searchQuery(scene)}"`, "pixabay");
-      const assets = await fetchPixabayVideos(scene, outDir, pixabayKey, CLIPS_PER_SCENE);
-      if (assets.length > 0) {
-        log(`Pixabay: downloaded ${assets.length} video clip(s) for scene ${scene.index + 1}`, "pixabay");
-        return assets;
-      }
-      log(`Pixabay: no video matches for scene ${scene.index + 1}, trying photos`, "pixabay");
-    } catch (err) {
-      console.error(`Pixabay video failed for scene ${scene.index}, trying Pixabay photos:`, err);
-      log(`Pixabay: video search failed for scene ${scene.index + 1}, trying photos`, "pixabay");
-    }
-
-    try {
-      const assets = await fetchPixabayPhotos(scene, outDir, pixabayKey, CLIPS_PER_SCENE);
-      if (assets.length > 0) {
-        log(`Pixabay: downloaded ${assets.length} photo(s) for scene ${scene.index + 1}`, "pixabay");
-        return assets;
-      }
-    } catch (err) {
-      console.error(`Pixabay photos failed for scene ${scene.index}, trying Pexels:`, err);
-      log(`Pixabay: photo fallback failed for scene ${scene.index + 1}, trying Pexels`, "pixabay");
-    }
-  }
-
-  const pexelsKey = process.env.PEXELS_API_KEY;
-  if (pexelsKey) {
-    try {
-      log(`Pexels: searching photo library for scene ${scene.index + 1} — "${searchQuery(scene)}"`, "pexels");
-      const assets = await fetchPexelsPhotos(scene, outDir, pexelsKey, CLIPS_PER_SCENE);
-      if (assets.length > 0) {
-        log(`Pexels: downloaded ${assets.length} photo(s) for scene ${scene.index + 1}`, "pexels");
-        return assets;
-      }
-    } catch (err) {
-      console.error(`Pexels photos failed for scene ${scene.index}, falling back to placeholder:`, err);
-      log(`Pexels: search failed for scene ${scene.index + 1}, using placeholder`, "pexels");
-    }
-  }
-
-  return [generatePlaceholderFrame(scene, outDir)];
+  // All supported styles (cartoon, stickman) use AI illustration via Pollinations
+  return generateIllustratedVisualsForScene(scene, outDir, style, onLog, styleSeed, styleVariant, aspectRatio);
 }
 
 function searchQuery(scene: Scene): string {
   return scene.visualPrompt.split(",")[0].split(".")[0].trim().slice(0, 60);
 }
 
-const STYLE_PROMPT_SUFFIX: Record<Exclude<VideoStyle, "realistic">, string> = {
-  "whiteboard-doodle":
-    "hand-drawn doodle sketch, whiteboard marker illustration, black ink line art on plain white background, simple explainer-video style, no color, highly detailed linework, professional illustration",
+const STYLE_PROMPT_SUFFIX: Record<VideoStyle, string> = {
+  // Cartoon used to be a loose, unconstrained prompt ("bold clean
+  // outlines... professional character design") with none of the shape
+  // discipline stickman has, so different shots of "a cartoon" character
+  // could come back looking like entirely different designs even with
+  // the same text description baked into each visualPrompt. Locking down
+  // concrete, repeatable shape/rendering rules — the same trick that
+  // makes stickman consistent — fixes that without losing cartoon's
+  // extra color and detail.
   cartoon:
-    "flat 2D cartoon illustration, bold clean outlines, vibrant simple colors, animated explainer-video style, highly detailed, professional character design, rich background detail",
+    "flat 2D cartoon illustration in a simple, repeatable character-design formula: rounded simple head shape, large simple eyes, a small simple nose or no nose, thick uniform black outlines on every shape, flat solid color fills only with at most one flat shadow tone (no gradients, no soft shading, no painterly texture), bold clean vector-style linework, vibrant but limited color palette, animated explainer-video style, simple flat-color background with few elements",
   // Strict construction rules so every generated frame reads as the
   // same recognizable "brand" of character, not a different loose
   // doodle style each time: circle head, no neck, two small dot eyes,
@@ -163,19 +123,19 @@ async function generateIllustratedVisualsForScene(
   style: Exclude<VideoStyle, "realistic">,
   onLog?: (text: string, service: "pollinations") => void,
   styleSeed?: number,
-  styleVariant?: StyleVariant
+  styleVariant?: StyleVariant,
+  aspectRatio?: AspectRatio
 ): Promise<VisualAsset[]> {
   fs.mkdirSync(outDir, { recursive: true });
   const baseSeed = styleSeed ?? deriveStyleSeed(scene.visualPrompt);
-  // Unlike Pixabay's keyword search (which wants a short, punchy query —
-  // see searchQuery()), Pollinations is generative and benefits from the
-  // FULL descriptive prompt Groq wrote for the scene. Using the
-  // truncated search-style query here was cutting real detail out of
-  // every illustration.
   const variantSuffix =
     styleVariant && styleVariant !== "default" ? `, ${STYLE_VARIANT_SUFFIX[styleVariant]}` : "";
   const basePrompt = `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}${variantSuffix}`;
   const shotVariants = ["", ", wide establishing shot", ", close-up detail"];
+
+  // Vertical videos need portrait-oriented illustrations — swap dims.
+  const imgW = aspectRatio === "9:16" ? 1080 : 1920;
+  const imgH = aspectRatio === "9:16" ? 1920 : 1080;
 
   const assets: VisualAsset[] = [];
 
@@ -185,7 +145,7 @@ async function generateIllustratedVisualsForScene(
     const outPath = path.join(outDir, `scene-${scene.index}-illustrated-${i}.jpg`);
     const url =
       `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-      `?width=1920&height=1080&seed=${seed}&nologo=true`;
+      `?width=${imgW}&height=${imgH}&seed=${seed}&nologo=true`;
 
     let succeeded = false;
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -222,11 +182,16 @@ async function generateIllustratedVisualsForScene(
 async function searchPixabayVideos(
   query: string,
   apiKey: string,
-  count: number
+  count: number,
+  isShorts = false
 ): Promise<{ videos: Record<string, { url: string; width: number; height: number }> }[]> {
+  // Pixabay doesn't have a portrait filter for videos, so we just fetch
+  // more results and the ffmpeg scale/crop in compose.ts handles the
+  // reframing regardless of source orientation.
   const url =
     `https://pixabay.com/api/videos/?key=${apiKey}` +
     `&q=${encodeURIComponent(query)}&per_page=${Math.max(count, 3)}&safesearch=true`;
+  void isShorts; // compose.ts crops/scales to the correct frame size
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Pixabay video search failed: ${res.status}`);
   const data = await res.json();
@@ -237,10 +202,11 @@ async function fetchPixabayVideos(
   scene: Scene,
   outDir: string,
   apiKey: string,
-  count: number
+  count: number,
+  isShorts = false
 ): Promise<VisualAsset[]> {
   const primaryQuery = searchQuery(scene);
-  let hits = await searchPixabayVideos(primaryQuery, apiKey, count);
+  let hits = await searchPixabayVideos(primaryQuery, apiKey, count, isShorts);
 
   // Broader retry: Pixabay's search is literal keyword matching, so a
   // specific multi-word query can come back empty even when a simpler
@@ -250,7 +216,7 @@ async function fetchPixabayVideos(
   if (hits.length === 0) {
     const broaderQuery = primaryQuery.split(" ").slice(0, 2).join(" ");
     if (broaderQuery && broaderQuery !== primaryQuery) {
-      hits = await searchPixabayVideos(broaderQuery, apiKey, count);
+      hits = await searchPixabayVideos(broaderQuery, apiKey, count, isShorts);
     }
   }
 
@@ -284,12 +250,16 @@ async function fetchPixabayPhotos(
   scene: Scene,
   outDir: string,
   apiKey: string,
-  count: number
+  count: number,
+  isShorts = false
 ): Promise<VisualAsset[]> {
   const query = searchQuery(scene);
+  // Use "vertical" orientation for Shorts so the photo already fills the
+  // 9:16 frame without a large letterbox crop.
+  const orientation = isShorts ? "vertical" : "horizontal";
   const url =
     `https://pixabay.com/api/?key=${apiKey}` +
-    `&q=${encodeURIComponent(query)}&image_type=photo&orientation=horizontal&safesearch=true&per_page=${Math.max(count, 3)}`;
+    `&q=${encodeURIComponent(query)}&image_type=photo&orientation=${orientation}&safesearch=true&per_page=${Math.max(count, 3)}`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Pixabay photo search failed: ${res.status}`);
@@ -320,12 +290,14 @@ async function fetchPexelsPhotos(
   scene: Scene,
   outDir: string,
   apiKey: string,
-  count: number
+  count: number,
+  isShorts = false
 ): Promise<VisualAsset[]> {
   const query = searchQuery(scene);
+  const orientation = isShorts ? "portrait" : "landscape";
 
   const searchRes = await fetch(
-    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count}&orientation=landscape`,
+    `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count}&orientation=${orientation}`,
     { headers: { Authorization: apiKey } }
   );
   if (!searchRes.ok) throw new Error(`Pexels photo search failed: ${searchRes.status}`);
@@ -382,12 +354,13 @@ function wrapPlaceholderText(text: string, maxCharsPerLine = 36): string {
  * drawtext+textfile pattern already proven for captions) guarantees
  * whatever comes out is something ffmpeg can always read back in.
  */
-function generatePlaceholderFrame(scene: Scene, outDir: string): VisualAsset {
+function generatePlaceholderFrame(scene: Scene, outDir: string, isShorts = false): VisualAsset {
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, `scene-${scene.index}-0.png`);
   const textPath = path.join(outDir, `scene-${scene.index}-placeholder-text.txt`);
   fs.writeFileSync(textPath, wrapPlaceholderText(scene.visualPrompt), "utf-8");
 
+  const size = isShorts ? "1080x1920" : "1920x1080";
   const drawtext =
     `drawtext=fontfile='${PLACEHOLDER_FONT_PATH}':textfile='${textPath}':` +
     `fontsize=48:fontcolor=#111111:x=(w-text_w)/2:y=(h-text_h)/2:line_spacing=10`;
@@ -395,7 +368,7 @@ function generatePlaceholderFrame(scene: Scene, outDir: string): VisualAsset {
   try {
     execFileSync(
       ffmpegPath.path,
-      ["-y", "-f", "lavfi", "-i", "color=c=white:s=1920x1080", "-vf", drawtext, "-frames:v", "1", outPath],
+      ["-y", "-f", "lavfi", "-i", `color=c=white:s=${size}`, "-vf", drawtext, "-frames:v", "1", outPath],
       { timeout: 20_000 }
     );
   } catch (err) {
@@ -404,7 +377,7 @@ function generatePlaceholderFrame(scene: Scene, outDir: string): VisualAsset {
     console.error("Placeholder drawtext render failed, using blank frame:", err);
     execFileSync(
       ffmpegPath.path,
-      ["-y", "-f", "lavfi", "-i", "color=c=white:s=1920x1080", "-frames:v", "1", outPath],
+      ["-y", "-f", "lavfi", "-i", `color=c=white:s=${size}`, "-frames:v", "1", outPath],
       { timeout: 20_000 }
     );
   }
