@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import { Script, VisualAsset } from "../types";
+import { Script, VisualAsset, AspectRatio } from "../types";
 
 ffmpeg.setFfmpegPath(ffmpegPath.path);
 
@@ -115,8 +115,12 @@ export async function composeVideo(
   script: Script,
   voiceoverPath: string,
   outputPath: string,
-  onLog?: (text: string) => void
+  onLog?: (text: string) => void,
+  aspectRatio?: AspectRatio
 ): Promise<string> {
+  const frameW = aspectRatio === "9:16" ? 1080 : 1920;
+  const frameH = aspectRatio === "9:16" ? 1920 : 1080;
+
   return new Promise((resolve, reject) => {
     const command = ffmpeg();
     const workDir = path.dirname(outputPath);
@@ -164,7 +168,7 @@ export async function composeVideo(
       command.input(seg.asset.path).inputOptions(inputOptions);
     }
 
-    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type, i, seg.duration));
+    const perSegmentFilters = segments.map((seg, i) => buildSegmentFilter(i, seg.asset.type, i, seg.duration, frameW, frameH));
 
     // Group segment labels by scene, in scene order, and concat each
     // scene's own shots into one [scene{i}] stream.
@@ -320,20 +324,19 @@ const MOTION_VARIANTS: ("zoom-in" | "zoom-out" | "zoom-subtle" | "hold" | "pan")
   "pan",
 ];
 
-// At PAN_ZOOM, scale=2560:1440 gives a crop width of 2560/PAN_ZOOM.
-// The margin available to slide across is 2560 - that crop width.
-// PAN_MARGIN_PX stays safely under that (2560 - 2560/1.2 ≈ 427px
-// available at zoom 1.2) so the pan can never reach the frame edge.
+// At PAN_ZOOM, the upscaled canvas gives a crop area of upW/PAN_ZOOM wide.
+// The pan margin is computed dynamically per frame size — see buildSegmentFilter.
 const PAN_ZOOM = 1.2;
-const PAN_MARGIN_PX = 300;
 
 function buildSegmentFilter(
   index: number,
   assetType: "video" | "image",
   globalIndex: number,
-  durationSeconds: number
+  durationSeconds: number,
+  frameW: number = 1920,
+  frameH: number = 1080
 ): string {
-  const base = `[${index}:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080`;
+  const base = `[${index}:v]scale=${frameW}:${frameH}:force_original_aspect_ratio=increase,crop=${frameW}:${frameH}`;
 
   if (assetType === "video") {
     return `${base},fps=24[v${index}]`;
@@ -345,18 +348,27 @@ function buildSegmentFilter(
     return `${base},fps=24[v${index}]`;
   }
 
+  // Upscale to 4/3 of the output frame to give Ken Burns / pan room to work.
+  // For 1920x1080 → 2560x1440; for 1080x1920 → 1440x2560.
+  const upW = Math.round(frameW * (4 / 3));
+  const upH = Math.round(frameH * (4 / 3));
+
   if (variant === "pan") {
     const totalFrames = Math.max(1, Math.round(durationSeconds * 24));
     // Alternate pan direction by index so it's not always the same
     // left-to-right sweep every time it comes up.
     const leftToRight = globalIndex % 2 === 0;
+    // Safe margin: 70% of available horizontal slide space at PAN_ZOOM.
+    // (upW - frameW/PAN_ZOOM) is the total horizontal slack; 70% keeps
+    // the crop window safely away from the upscaled canvas edge.
+    const panMargin = Math.round((upW - frameW / PAN_ZOOM) * 0.7);
     const xExpr = leftToRight
-      ? `${PAN_MARGIN_PX}*min(on/${totalFrames},1)`
-      : `${PAN_MARGIN_PX}-${PAN_MARGIN_PX}*min(on/${totalFrames},1)`;
+      ? `${panMargin}*min(on/${totalFrames},1)`
+      : `${panMargin}-${panMargin}*min(on/${totalFrames},1)`;
     return (
-      `${base},scale=2560:1440,` +
+      `${base},scale=${upW}:${upH},` +
       `zoompan=z='${PAN_ZOOM}':d=1:` +
-      `x='${xExpr}':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=24[v${index}]`
+      `x='${xExpr}':y='ih/2-(ih/zoom/2)':s=${frameW}x${frameH}:fps=24[v${index}]`
     );
   }
 
@@ -368,8 +380,8 @@ function buildSegmentFilter(
       : "min(1+0.0004*on,1.15)"; // zoom-subtle
 
   return (
-    `${base},scale=2560:1440,` +
+    `${base},scale=${upW}:${upH},` +
     `zoompan=z='${zoomExpr}':d=1:` +
-    `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=24[v${index}]`
+    `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${frameW}x${frameH}:fps=24[v${index}]`
   );
 }
