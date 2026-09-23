@@ -9,10 +9,13 @@
 
 import fs from "fs";
 import path from "path";
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { renderFrame } from "./draw";
 import { StickmanSceneConfig, StickmanFrameSpec, Character } from "./types";
+
+const execFileAsync = promisify(execFile);
 
 function easeOut(t: number): number {
   return 1 - Math.pow(1 - Math.min(t, 1), 3);
@@ -22,9 +25,13 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-/**
- * Render all frames of a scene and encode to MP4.
- */
+/** Yields to the event loop so HTTP health-check requests can be
+ *  answered between frames — prevents Render from restarting the
+ *  server mid-generation when stickman is doing CPU-heavy canvas work. */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise<void>(resolve => setImmediate(resolve));
+}
+
 export async function compileScene(
   config: StickmanSceneConfig,
   outputPath: string,
@@ -98,7 +105,15 @@ export async function compileScene(
 
     const buf = await renderFrame(spec);
     const framePath = path.join(tmpDir, `frame${String(i).padStart(5, "0")}.png`);
-    fs.writeFileSync(framePath, buf);
+    await fs.promises.writeFile(framePath, buf);
+
+    // ── KEY FIX: yield to event loop after every frame ────────────────────
+    // Without this, 60 synchronous canvas draws + file writes block Node.js
+    // for ~10s per clip, causing Render's HTTP health check to time out →
+    // Render marks the instance unhealthy → restarts → kills in-flight jobs.
+    // setImmediate lets pending HTTP callbacks (health checks, etc.) run
+    // between frames, so the server stays responsive throughout encoding.
+    await yieldToEventLoop();
 
     if (i % 10 === 0) {
       onLog?.(`Stickman: frame ${i + 1}/${frames}`);
@@ -107,8 +122,10 @@ export async function compileScene(
 
   onLog?.(`Stickman: encoding MP4…`);
 
+  // execFileAsync (vs execFileSync) keeps the event loop alive during
+  // ffmpeg encoding, so health checks continue to be answered.
   const pattern = path.join(tmpDir, "frame%05d.png");
-  execFileSync(
+  await execFileAsync(
     ffmpegPath.path,
     [
       "-y",
