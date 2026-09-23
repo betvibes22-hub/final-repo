@@ -1,32 +1,20 @@
-import { GenerateRequest, Script, Scene, ScriptVibe } from "../types";
+import { GenerateRequest, Script, Scene } from "../types";
 import { getTrendContext } from "./trends";
 
-const VIBE_INSTRUCTIONS: Record<ScriptVibe, string> = {
-  documentary:
-    "Write in a calm, informative documentary/explainer voice — measured pacing, factual, narrator-style.",
-  "fun-shorts":
-    "Write with fun, casual YouTube Shorts/TikTok energy — punchy short sentences, a strong hook in the first line, conversational slang where natural, playful asides. This should feel like a creator talking directly to camera, not a narrator reading facts.",
-  storytime:
-    "Write like a relatable \"storytime\" video — first-person or narrative voice, build suspense/curiosity, casual and personal in tone, like someone telling a friend what happened.",
-  hype:
-    "Write with high-energy hype — bold declarative hooks, rapid-fire pacing, exclamation-worthy beats, the kind of energy that makes someone stop scrolling in the first 2 seconds and stay for a big payoff.",
-  "viral-explainer":
-    "Write in the dense, evidence-driven viral-explainer style (the format used by top-performing history/science/psychology explainer channels). Structure, in order: (1) a cold open in second person, present tense, dropping the viewer straight into a sensory high-stakes moment — no \"in this video,\" no title restatement; (2) one short, stark stakes sentence; (3) pivot straight into the real question and then evidence, no filler transition; (4) the core of the script — repeated units of claim → a specific named source (a real place, study, researcher, or historical event) → a precise number (year, weight, distance, percent, temperature) → a plain-language translation of why it matters. Never state a vague claim without a name or number attached; (5) a short rhetorical question every 30-60 seconds of runtime to re-hook the listener (\"So what happened?\", \"But why?\"); (6) a callback — plant a specific detail early, pay it off later; (7) keep bridging back to the viewer's own life/body/habits throughout the body, not just at the end; (8) a short, punchy, reflective closer that zooms out to one resonant line, using sentence fragments for rhythm. Never coast more than a sentence or two without a hook or new fact, never use vague qualifiers like \"a long time ago\" or \"very strong,\" never write a robotic list (\"Reason one, reason two\"), and mix short fragments with longer sentences throughout.",
-  "topx":
-    "Write as a countdown/list format (\"Top X\" style). Open with a punchy one-line hook establishing what the list is and why it matters — no \"in this video.\" Structure the body as clearly delineated numbered entries counting down or up (state the number and a short punchy label for each entry as you reach it), each entry backed by a specific fact, name, or number — never a vague entry with nothing concrete behind it. Keep entries punchy and varied in length, not uniform. Close with a short final beat on the top entry, giving it slightly more weight than the others, then a one-line closer.",
-  sleep:
-    "Write in a slow, calm, ambient narration style meant to lull a listener toward sleep, not hook them with urgency. Long, gentle, flowing sentences — no rhetorical questions, no jarring beats, no hype. Present the material as an unhurried, softly told story or reflection, with a warm, soothing, low-energy voice throughout. Still ground it in real specific details (places, figures, sensory description) but let them unfold slowly rather than punchily. No urgency, no cliffhangers, no re-hooking — just a steady, calming flow start to finish.",
-};
+const SCRIPT_INSTRUCTION = `Write a gripping, high-retention short-form video script. Every script MUST follow these rules without exception:
 
-/**
- * Groq version of script generation — genuinely free, no credit card
- * required (console.groq.com). Uses an OpenAI-compatible endpoint.
- *
- * Supports hybrid mode: if req.customScript is set alongside
- * scriptMode "hybrid", the user's draft is handed to the model as
- * material to expand/polish into full scenes, rather than writing from
- * scratch.
- */
+1. COLD OPEN — No "in this video," no "today we're looking at," no title restating. Drop the viewer directly into a specific, sensory, high-stakes moment. Start mid-action. The first sentence should make someone stop scrolling.
+
+2. SPECIFIC FACTS ONLY — Every claim needs a name, number, date, or place. Never write "a long time ago" — write the year. Never "scientists discovered" — name the scientist. Never "many people" — give a real figure. Vague claims are cut.
+
+3. SENTENCE RHYTHM — Mix long sentences with sudden short punches. Fragment. Two words. Then a longer sentence to breathe and expand before the next short hit. Rhythm is what keeps people listening.
+
+4. BUILD TENSION — Every scene should plant a question the viewer needs answered. Seed a specific detail early. Pay it off later. Make them need to reach the end.
+
+5. NO FILLER — Cut every word that could be removed without losing information. "The fact that" → cut. "It is worth noting that" → cut. "Interestingly" → cut. Every single sentence earns its place or it goes.
+
+6. PUNCHY CLOSER — End with one resonant line that zooms out — not a summary, not a "so what did we learn today," just a gut-punch final beat that sticks.`;
+
 export async function generateScriptGroq(
   req: GenerateRequest,
   onLog?: (text: string, service: "groq" | "tavily") => void,
@@ -45,13 +33,11 @@ export async function generateScriptGroq(
     onLog?.(`Tavily: found ${trendTerms.length} trend term(s) to weave into the script`, "tavily");
   }
 
+  const isComparison = req.scriptMode === "comparison" && !!req.conceptA && !!req.conceptB;
   const targetWordCount = Math.round(req.targetLengthSeconds * 2.5);
-  const sceneCount = Math.max(3, Math.round(req.targetLengthSeconds / 15));
-  const vibeLabel = req.vibe ?? "documentary";
-  onLog?.(
-    `Groq: drafting ${sceneCount}-scene script (~${targetWordCount} words, ${vibeLabel} vibe)`,
-    "groq"
-  );
+  const sceneCount =
+    isComparison || req.scriptMode === "drama" ? 5 : Math.max(3, Math.round(req.targetLengthSeconds / 15));
+  onLog?.(`Groq: drafting ${sceneCount}-scene script (~${targetWordCount} words)`, "groq");
 
   const trendBlock =
     trendTerms.length > 0
@@ -64,88 +50,6 @@ export async function generateScriptGroq(
       ? `\n\nThe user wrote a rough draft below (${draftWordCount} words). It is a starting point ONLY — it is too short/thin on its own. Do NOT simply repeat, lightly rephrase, or return it unchanged. You MUST substantially rewrite and expand it to reach ~${targetWordCount} words: keep their core ideas, topic, and tone, but add narrative detail, concrete examples, transitions between beats, and depth on each point so it reads like a fully produced script, not a draft. If the draft doesn't specify a structure, write it as a well-paced explainer with a hook, build-up, and payoff. Their draft:\n"""\n${req.customScript.trim()}\n"""`
       : "";
 
-  // Remix mode: the user uploaded a video and wants "one like that,"
-  // remade. This is deliberately built as structural inspiration only —
-  // topic, pacing, beat order, how it hooks and pays off — never as
-  // wording to copy. The instruction below is explicit and repeated for
-  // a reason: reusing someone else's actual sentences would just be
-  // uncredited copying with extra steps, not a genuinely new video.
   const remixBlock =
     req.scriptMode === "remix" && req.remixTranscript?.trim()
-      ? `\n\nBelow is a transcript of a video the user wants to remake in their own style. Study its TOPIC, STRUCTURE, and PACING only — the order of ideas, how it opens, how it builds, how it lands. Do NOT copy, closely paraphrase, or lift any sentence or distinctive phrase from it. Write a completely ORIGINAL script, in your own words throughout, that covers similar ground with a similar shape but is not a reproduction of this one in any way. Treat the transcript as a structural reference, never as source text to quote from. Transcript:\n"""\n${req.remixTranscript.trim().slice(0, 6000)}\n"""`
-      : "";
-
-  // Consistency for illustrated styles: Pollinations has no memory
-  // between image calls, so if scene visualPrompts just say "the same
-  // character as before" the image generator has nothing to work with
-  // and every shot drifts. The fix is to make Groq do the consistency
-  // work up front — lock a character/setting description once, then
-  // write that FULL description into every single scene's visualPrompt
-  // that features them, spelled out completely each time rather than
-  // referenced by name. Repetitive on purpose: each image prompt must
-  // stand alone.
-  const illustratedStyle = req.style === "whiteboard-doodle" || req.style === "cartoon" || req.style === "stickman";
-  const consistencyBlock = illustratedStyle
-    ? `\n\nBefore writing scenes: privately decide on a locked character description (hair, skin tone, clothing, build — driven by this specific topic, not generic defaults) for any recurring character, and a locked setting description (palette, key elements, lighting) for any setting the script revisits. Then, for every scene's "visualPrompt", write out the COMPLETE character and setting description in full every single time they appear — never a shorthand reference like "the same character" or "Scene 2's setting." Each visualPrompt is used in total isolation by an image generator with no memory of other scenes, so it must be a fully self-contained description on its own: character (if present) fully described, setting fully described, pose/action, expression, and framing — every time, even if that means repeating the same sentences across many scenes.`
-    : "";
-
-  const vibe = req.vibe ?? "documentary";
-  const vibeInstruction = VIBE_INSTRUCTIONS[vibe];
-
-  const systemPrompt = `You write scripts for ${req.style} short-form videos.
-${vibeInstruction}${consistencyBlock}
-Output ONLY valid JSON matching this shape, no other text:
-{"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
-Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}${remixBlock}`;
-
-  const regenerateBlock =
-    attempt > 0
-      ? `\n\nThis is a regeneration — the previous draft was rejected. Write a genuinely different take: a different opening scenario/hook, different specific facts or examples, different structural choices within the required beats. Do not reuse phrasing, sentences, or the same specific examples from a typical first-pass answer to this topic.`
-      : "";
-
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "openai/gpt-oss-120b",
-      // Without an explicit temperature, regenerating with an identical
-      // prompt could return an almost identical script — this is what
-      // was causing "regenerate" to not actually change anything.
-      temperature: attempt > 0 ? 1.1 : 0.9,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt + regenerateBlock },
-        { role: "user", content: `Topic: ${req.topic}` },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Groq script generation failed: ${response.status} ${await response.text()}`);
-  }
-
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content ?? "";
-  const parsed: { title: string; scenes: { text: string; visualPrompt: string }[] } =
-    JSON.parse(text);
-
-  onLog?.(`Groq: script drafted — "${parsed.title}" (${parsed.scenes.length} scenes)`, "groq");
-
-  const perSceneSeconds = req.targetLengthSeconds / parsed.scenes.length;
-  const scenes: Scene[] = parsed.scenes.map((s, i) => ({
-    index: i,
-    text: s.text,
-    visualPrompt: s.visualPrompt,
-    startSeconds: Math.round(i * perSceneSeconds),
-    durationSeconds: Math.round(perSceneSeconds),
-  }));
-
-  return {
-    title: parsed.title,
-    scenes,
-    fullNarrationText: scenes.map((s) => s.text).join(" "),
-  };
-}
+      ? `\n\nBelow is a transcript of a video the user wants to remake in their own style. Study its TOPIC, STRUCTURE, and PACING only — the
