@@ -171,6 +171,11 @@ Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${
       // prompt could return an almost identical script — this is what
       // was causing "regenerate" to not actually change anything.
       temperature: attempt > 0 ? 1.1 : 0.9,
+      // Default max_tokens on Groq is 1024 — far too small for a 5-scene
+      // script with fully self-contained visualPrompts (each one repeats
+      // the complete character + setting description). 4096 gives plenty
+      // of headroom without hitting Groq free-tier rate limits.
+      max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt + regenerateBlock },
