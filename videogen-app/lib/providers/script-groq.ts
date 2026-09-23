@@ -45,7 +45,11 @@ export async function generateScriptGroq(
   }
 
   const isComparison = req.scriptMode === "comparison" && !!req.conceptA && !!req.conceptB;
-  const targetWordCount = Math.round(req.targetLengthSeconds * 2.5);
+  // Piper TTS speaks at ~4 words/second (faster than the old 2.5 estimate).
+  // Under-estimating this is why 45-second videos were ending at ~28 seconds —
+  // the TTS finished narrating 112 words in ~28s, then -shortest cut the video.
+  // 4.0 wps means ~180 words for a 45s script → audio fills the full duration.
+  const targetWordCount = Math.round(req.targetLengthSeconds * 4.0);
   // Comparison and drama formats are always exactly 5 scenes regardless of length
   const sceneCount =
     isComparison || req.scriptMode === "drama" ? 5 : Math.max(3, Math.round(req.targetLengthSeconds / 15));
