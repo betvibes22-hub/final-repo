@@ -27,7 +27,7 @@ export interface ScriptInfo {
 export interface ActivityLogEntry {
   ts: number;
   text: string;
-  service: "groq" | "tavily" | "piper" | "voicerss" | "pixabay" | "pexels" | "pollinations" | "ffmpeg" | "cloudinary";
+  service: "groq" | "tavily" | "elevenlabs" | "piper" | "voicerss" | "pixabay" | "pexels" | "pollinations" | "ffmpeg" | "cloudinary";
 }
 
 export interface JobState {
@@ -47,34 +47,24 @@ export interface JobState {
   thumbnailUrl?: string;
 }
 
-// Mirrors the voice catalog in lib/providers/piperTts.ts — keep in sync.
+// ElevenLabs premade voice catalog — same voices used by Pictory, InVideo,
+// Opus Clip and every top AI video platform. Keys are ElevenLabs voice IDs.
+// When ELEVENLABS_API_KEY is set these are the active voices; otherwise Piper
+// voices are used as fallback (see lib/providers/tts.ts).
 export const VOICES_BY_GENDER: Record<VoiceGender, { key: string; name: string }[]> = {
   female: [
-    { key: "en_US-amy-medium", name: "Amy" },
-    { key: "en_US-kathleen-low", name: "Kathleen" },
-    { key: "en_US-kristin-medium", name: "Kristin" },
-    { key: "en_US-hfc_female-medium", name: "Hannah" },
-    { key: "en_US-ljspeech-medium", name: "Lucy" },
-    { key: "en_US-lessac-medium", name: "Lessac" },
-    { key: "en_GB-jenny_dioco-medium", name: "Jenny (British)" },
-    { key: "en_GB-southern_english_female-low", name: "Southern (British)" },
-    { key: "en_GB-alba-medium", name: "Alba (Scottish)" },
-    { key: "en_GB-cori-medium", name: "Cori (British)" },
-    { key: "en_GB-cori-high", name: "Cori HD (British)" },
-    { key: "en_US-lessac-high", name: "Lessac HD" },
+    { key: "hpp4J3VqNfWAUOO0d1Us", name: "Bella" },
+    { key: "FGY2WhTYpPnrIDTdsKH5", name: "Laura" },
+    { key: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice (British)" },
+    { key: "XrExE9yKIg1WjnnlVkGX", name: "Matilda" },
+    { key: "pFZP5JQG7iQjIQuC4Bku", name: "Lily (British)" },
   ],
   male: [
-    { key: "en_US-danny-low", name: "Danny" },
-    { key: "en_US-joe-medium", name: "Joe" },
-    { key: "en_US-john-medium", name: "John" },
-    { key: "en_US-ryan-medium", name: "Ryan" },
-    { key: "en_US-norman-medium", name: "Norman" },
-    { key: "en_US-hfc_male-medium", name: "Marcus" },
-    { key: "en_US-bryce-medium", name: "Bryce" },
-    { key: "en_US-reza_ibrahim-medium", name: "Reza" },
-    { key: "en_GB-alan-medium", name: "Alan (British)" },
-    { key: "en_GB-northern_english_male-medium", name: "Northern (British)" },
-    { key: "en_US-kusal-medium", name: "Kusal" },
+    { key: "TX3LPaxmHKxFdv7VOQHJ", name: "Liam" },
+    { key: "nPczCjzI2devNBz1zQrb", name: "Brian" },
+    { key: "JBFqnCBsd6RMkjVDRZzb", name: "George (British)" },
+    { key: "onwK4e9ZLuTAKqWW03F9", name: "Daniel (British)" },
+    { key: "pNInz6obpgDQGcFmaJgB", name: "Adam" },
   ],
 };
 
@@ -104,7 +94,8 @@ export const TIMELINE_STEPS = [
 export const SERVICE_META: Record<ActivityLogEntry["service"], { label: string; color: string }> = {
   groq: { label: "Groq (script)", color: "#d4af37" },
   tavily: { label: "Tavily (trends)", color: "#8ab4f8" },
-  piper: { label: "Piper (voice)", color: "#c792ea" },
+  elevenlabs: { label: "ElevenLabs (voice)", color: "#a78bfa" },
+  piper: { label: "Piper (voice fallback)", color: "#c792ea" },
   voicerss: { label: "VoiceRSS (voice fallback)", color: "#c792ea" },
   pixabay: { label: "Pixabay (footage)", color: "#7ec699" },
   pexels: { label: "Pexels (footage fallback)", color: "#7ec699" },
@@ -116,6 +107,7 @@ export const SERVICE_META: Record<ActivityLogEntry["service"], { label: string; 
 export const ALL_SERVICES: ActivityLogEntry["service"][] = [
   "groq",
   "tavily",
+  "elevenlabs",
   "piper",
   "voicerss",
   "pixabay",
