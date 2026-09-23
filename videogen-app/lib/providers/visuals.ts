@@ -4,6 +4,8 @@ import { execFileSync } from "child_process";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { Scene, VideoStyle, VisualAsset, StyleVariant, AspectRatio } from "../types";
 import { downloadToFile } from "./download";
+import { generateStickmanVisualsForScene } from "./stickman/index";
+import type { AnimStyle } from "./stickman/types";
 
 // Multiple clips cut between per scene, matching the faster short-form
 // pace the old AI-image approach had (3 images/scene) — a single long
@@ -31,9 +33,29 @@ export async function generateVisualsForScene(
   onLog?: (text: string, service: "pixabay" | "pexels" | "pollinations") => void,
   styleSeed?: number,
   styleVariant?: StyleVariant,
-  aspectRatio?: AspectRatio
+  aspectRatio?: AspectRatio,
+  characterA?: string,
+  characterB?: string
 ): Promise<VisualAsset[]> {
-  // All supported styles (cartoon, stickman) use AI illustration via Pollinations
+  // Stickman style: use programmatic canvas-drawn animation system
+  if (style === "stickman") {
+    // Map styleVariant to AnimStyle
+    const animStyle: AnimStyle =
+      styleVariant === "sketchy" ? "classic" :
+      styleVariant === "vivid" || styleVariant === "cinematic" ? "colorful" :
+      styleVariant === "watercolor" || styleVariant === "ghibli" ? "colorful" :
+      styleVariant === "crayon" ? "chunky" :
+      "colorful"; // default
+
+    const stickmanAssets = await generateStickmanVisualsForScene(
+      scene, outDir, animStyle, onLog, characterA, characterB
+    );
+    if (stickmanAssets.length > 0) return stickmanAssets;
+    // If all clips failed, fall through to Pollinations as last resort
+    onLog?.(`Stickman system failed for scene ${scene.index + 1}, using Pollinations fallback`, "pollinations");
+  }
+
+  // Cartoon style (and stickman fallback): AI illustration via Pollinations
   return generateIllustratedVisualsForScene(scene, outDir, style, onLog, styleSeed, styleVariant, aspectRatio);
 }
 
