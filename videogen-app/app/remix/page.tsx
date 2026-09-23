@@ -34,7 +34,7 @@ export default function RemixPage() {
   const [lengthSeconds, setLengthSeconds] = useState(60);
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
   const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
-  const [voiceName, setVoiceName] = useState("en_US-amy-medium");
+  const [voiceName, setVoiceName] = useState(VOICES_BY_GENDER["female"][0].key);
   const [voicePace, setVoicePace] = useState<VoicePace>("normal");
 
   const [job, setJob] = useState<JobState | null>(null);
