@@ -53,6 +53,12 @@ const PREMISE_EXAMPLES: Record<Genre, { premise: string; a: string; b: string }[
   ],
 };
 
+/**
+ * Short Drama Generator — Toonflow-inspired animated short drama format.
+ * Uses our free stack (Groq + Pollinations + Piper + FFmpeg + Cloudinary)
+ * with a drama-specific 5-scene script structure:
+ *   Setup → Inciting Incident → Rising Tension → Twist → Cliffhanger/Close
+ */
 export default function DramaPage() {
   const [genre, setGenre] = useState<Genre>("romance");
   const [premise, setPremise] = useState("");
@@ -180,18 +186,74 @@ export default function DramaPage() {
   }
 
   return (
-    
-        
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 24px", fontFamily: "sans-serif" }}>
+      <Link href="/" style={{ color: "#d4af37", fontSize: 13, textDecoration: "none" }}>
+        ← Back to What&apos;s the Difference?
+      </Link>
+
+      {/* HEADER */}
+      <div style={{ textAlign: "center", margin: "20px 0 40px" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 14px",
+            marginBottom: 16,
+            borderRadius: 999,
+            border: "1px solid rgba(212,175,55,0.5)",
+            background: "rgba(212,175,55,0.08)",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#d4af37",
+            letterSpacing: 1,
+            textTransform: "uppercase",
+          }}
+        >
+          {'🎭'} Short Drama Generator
+        </div>
+        <h1 style={{ fontSize: 38, fontWeight: 800, color: "#f2eee3", margin: "0 0 10px", lineHeight: 1.15 }}>
           Turn any story into a Short
-        
-        
+        </h1>
+        <p style={{ color: "#b8b2a0", fontSize: 15, maxWidth: 540, margin: "0 auto" }}>
           One-line premise. Two characters. Animated in 5 scenes — Toonflow-style drama on our free stack.
-        
-      
+        </p>
+      </div>
 
-      
+      <div style={{ display: "flex", gap: 40, flexWrap: "wrap" }}>
+        <main style={{ flex: "2 1 480px", minWidth: 320 }}>
 
-          
+          {/* GENRE PICKER */}
+          <label style={labelStyle}>Genre</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+            {(Object.entries(GENRE_META) as [Genre, typeof GENRE_META[Genre]][]).map(([g, meta]) => (
+              <button
+                key={g}
+                onClick={() => setGenre(g)}
+                style={{
+                  flex: "1 1 calc(33% - 8px)",
+                  minWidth: 100,
+                  padding: "10px 8px",
+                  borderRadius: 8,
+                  border: genre === g ? "2px solid #d4af37" : "1px solid rgba(212,175,55,0.25)",
+                  background: genre === g ? "rgba(212,175,55,0.1)" : "transparent",
+                  color: genre === g ? "#d4af37" : "#9d9784",
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 3,
+                }}
+              >
+                <span style={{ fontSize: 20 }}>{meta.emoji}</span>
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{meta.label}</span>
+                <span style={{ fontSize: 10, opacity: 0.7 }}>{meta.hint}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* PREMISE */}
+          <label style={labelStyle}>Story premise</label>
           <textarea
             value={premise}
             onChange={(e) => setPremise(e.target.value)}
@@ -200,39 +262,174 @@ export default function DramaPage() {
             style={{ ...inputStyle, resize: "vertical" }}
           />
 
-          
+          {/* EXAMPLE CHIPS */}
+          <p style={{ fontSize: 11, color: "#6b6656", marginBottom: 8, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>
             Try these {GENRE_META[genre].label.toLowerCase()} premises
-          
-          
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 24 }}>
+            {PREMISE_EXAMPLES[genre].map((ex, i) => (
+              <button
+                key={i}
+                onClick={() => fillExample(ex)}
+                style={{
+                  textAlign: "left",
+                  padding: "9px 14px",
+                  borderRadius: 7,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "transparent",
+                  color: "#9d9784",
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                &ldquo;{ex.premise}&rdquo; <span style={{ color: "#6b6656" }}>— {ex.a} &amp; {ex.b}</span>
+              </button>
+            ))}
+          </div>
 
-          
-          
+          {/* CHARACTER NAMES */}
+          <label style={labelStyle}>Characters (optional — helps visual consistency)</label>
+          <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+            <input
+              type="text"
+              value={characterA}
+              onChange={(e) => setCharacterA(e.target.value)}
+              placeholder="Character A name"
+              style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
+            />
+            <input
+              type="text"
+              value={characterB}
+              onChange={(e) => setCharacterB(e.target.value)}
+              placeholder="Character B name"
+              style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
+            />
+          </div>
 
-          
-          
+          {/* STYLE */}
+          <label style={labelStyle}>Visual style</label>
+          <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+            {(["cartoon", "stickman"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStyle(s)}
+                style={{
+                  flex: 1,
+                  padding: "12px 10px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  border: style === s ? "2px solid #d4af37" : "1px solid rgba(212,175,55,0.3)",
+                  background: style === s ? "rgba(212,175,55,0.12)" : "transparent",
+                  color: style === s ? "#d4af37" : "#9d9784",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+              >
+                {s === "cartoon" ? "🎨 Cartoon" : "🖊️ Stickman"}
+              </button>
+            ))}
+          </div>
 
-          
+          {/* FORMAT BADGES */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
             {[
               { icon: "📱", label: "9:16 Shorts" },
               { icon: "🎬", label: "5-scene drama" },
               { icon: "⏱️", label: "~50 seconds" },
             ].map((b) => (
-              
-                {b.icon}{b.label}
-              
+              <div
+                key={b.label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "5px 11px",
+                  borderRadius: 999,
+                  background: "rgba(212,175,55,0.07)",
+                  border: "1px solid rgba(212,175,55,0.2)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "#c9a830",
+                }}
+              >
+                <span>{b.icon}</span><span>{b.label}</span>
+              </div>
             ))}
-          
+          </div>
 
-          
-          
-          
+          {/* VOICE */}
+          <label style={labelStyle}>Voice</label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <select
+              value={voiceGender}
+              onChange={(e) => {
+                const g = e.target.value as VoiceGender;
+                setVoiceGender(g);
+                setVoiceName(VOICES_BY_GENDER[g][0].key);
+              }}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            >
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+            <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
+              {VOICES_BY_GENDER[voiceGender].map((v) => (
+                <option key={v.key} value={v.key}>{v.name}</option>
+              ))}
+            </select>
+            <select value={voicePace} onChange={(e) => setVoicePace(e.target.value as VoicePace)} style={{ ...inputStyle, marginBottom: 0, flex: 1 }}>
+              <option value="slower">Slower</option>
+              <option value="normal">Normal pace</option>
+              <option value="faster">Faster</option>
+            </select>
+          </div>
+          <button
+            onClick={handlePreviewVoice}
+            disabled={previewingVoice}
+            style={{
+              padding: "7px 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              background: "transparent",
+              color: "#d4af37",
+              border: "1px solid rgba(212,175,55,0.5)",
+              borderRadius: 6,
+              cursor: previewingVoice ? "default" : "pointer",
+              marginBottom: 24,
+              opacity: previewingVoice ? 0.6 : 1,
+            }}
+          >
+            {previewingVoice ? "Loading..." : "▶ Preview voice"}
+          </button>
           {voicePreviewError && (
-            {voicePreviewError}
+            <p style={{ color: "#e08a8a", fontSize: 12, marginTop: -20, marginBottom: 16 }}>{voicePreviewError}</p>
           )}
 
-          
+          {/* GENERATE */}
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit || busy}
+            style={{
+              width: "100%",
+              padding: "16px 20px",
+              fontSize: 17,
+              fontWeight: 700,
+              background: canSubmit && !busy ? "#d4af37" : "rgba(212,175,55,0.15)",
+              color: canSubmit && !busy ? "#0b0a08" : "#6b6656",
+              border: "1px solid #d4af37",
+              borderRadius: 10,
+              cursor: busy || !canSubmit ? "default" : "pointer",
+              letterSpacing: 0.3,
+            }}
+          >
+            {submitting
+              ? "Writing your drama..."
+              : busy
+              ? "Generating..."
+              : `Generate ${GENRE_META[genre].emoji} Short Drama`}
+          </button>
           {submitError && (
-            {submitError}
+            <p style={{ color: "#e08a8a", fontSize: 13, marginTop: 10 }}>{submitError}</p>
           )}
 
           {job && (
@@ -253,10 +450,10 @@ export default function DramaPage() {
               onRegenerateScene={handleRegenerateScene}
             />
           )}
-        
+        </main>
 
         <ActivitySidebar job={job} />
-      
-    
+      </div>
+    </div>
   );
 }
