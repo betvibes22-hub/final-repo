@@ -60,6 +60,8 @@ export const VOICES_BY_GENDER: Record<VoiceGender, { key: string; name: string }
     { key: "en_GB-southern_english_female-low", name: "Southern (British)" },
     { key: "en_GB-alba-medium", name: "Alba (Scottish)" },
     { key: "en_GB-cori-medium", name: "Cori (British)" },
+    { key: "en_GB-cori-high", name: "Cori HD (British)" },
+    { key: "en_US-lessac-high", name: "Lessac HD" },
   ],
   male: [
     { key: "en_US-danny-low", name: "Danny" },
@@ -72,6 +74,7 @@ export const VOICES_BY_GENDER: Record<VoiceGender, { key: string; name: string }
     { key: "en_US-reza_ibrahim-medium", name: "Reza" },
     { key: "en_GB-alan-medium", name: "Alan (British)" },
     { key: "en_GB-northern_english_male-medium", name: "Northern (British)" },
+    { key: "en_US-kusal-medium", name: "Kusal" },
   ],
 };
 
