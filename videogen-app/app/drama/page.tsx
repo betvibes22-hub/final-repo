@@ -66,7 +66,7 @@ export default function DramaPage() {
   const [characterB, setCharacterB] = useState("");
   const [style, setStyle] = useState<"cartoon" | "stickman">("cartoon");
   const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
-  const [voiceName, setVoiceName] = useState("en_US-amy-medium");
+  const [voiceName, setVoiceName] = useState(VOICES_BY_GENDER["female"][0].key);
   const [voicePace, setVoicePace] = useState<VoicePace>("normal");
 
   const [job, setJob] = useState<JobState | null>(null);
