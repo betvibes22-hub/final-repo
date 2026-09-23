@@ -58,8 +58,15 @@ const STYLE_PROMPT_SUFFIX: Record<VideoStyle, string> = {
   // thin eyebrows, one curved line for the mouth, thin uniform stick
   // limbs, rounded mitten hands/feet (no fingers/toes), flat solid
   // color fills only — no gradients, no shading, no texture.
+  // Stickman: put the style directive FIRST in the prompt so the image
+  // model cannot ignore it. Pollinations renders whatever comes first —
+  // if the scene description (e.g. "Maya, dark hair, gray blazer") comes
+  // first, the model draws that person in its default style (often anime)
+  // and treats the stickman suffix as a loose modifier. Flipping the order
+  // so the style constraint leads forces the model into stickman mode before
+  // it even reads the scene content.
   stickman:
-    "minimalist flat-color stickman doodle explainer style: perfect circle head with no neck, two small black dot eyes, thin black eyebrows, a single curved black line for the mouth, thin uniform black stick limbs, rounded black mitten hands with no fingers, rounded black mitten feet with no toes, flat solid color fills only, no gradients, no shading, no texture, clean uniform thin line weight, simple 2-3 layer flat-color background",
+    "STICKMAN ONLY — draw simple minimalist stickman figures, NOT realistic humans, NOT anime characters, NOT cartoon characters with detailed faces. Style: perfect circle head with no neck, two tiny black dot eyes, single curved black smile line, thin uniform black stick body and limbs, round mitten hands with no fingers, round mitten feet with no toes, flat solid color fills only, no gradients, no shading, no texture, no detailed facial features, no hair, no clothing details. Background: 2-3 flat solid colors, simple geometric shapes only",
 };
 
 // Optional look modifier layered on top of the base style — additive,
@@ -130,7 +137,15 @@ async function generateIllustratedVisualsForScene(
   const baseSeed = styleSeed ?? deriveStyleSeed(scene.visualPrompt);
   const variantSuffix =
     styleVariant && styleVariant !== "default" ? `, ${STYLE_VARIANT_SUFFIX[styleVariant]}` : "";
-  const basePrompt = `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}${variantSuffix}`;
+  // For stickman: style directive FIRST so Pollinations enters stickman mode
+  // before it reads the scene description. If the scene description (which
+  // Groq writes as actions/poses only, never as appearance) came first, the
+  // model could drift into its default rendering style. Leading with the
+  // stickman constraint locks the visual register immediately.
+  const basePrompt =
+    style === "stickman"
+      ? `${STYLE_PROMPT_SUFFIX[style]}. Scene: ${scene.visualPrompt}${variantSuffix}`
+      : `${scene.visualPrompt}, ${STYLE_PROMPT_SUFFIX[style]}${variantSuffix}`;
   const shotVariants = ["", ", wide establishing shot", ", close-up detail"];
 
   // Vertical videos need portrait-oriented illustrations — swap dims.
