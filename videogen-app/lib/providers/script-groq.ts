@@ -1,8 +1,7 @@
 import { GenerateRequest, Script, Scene } from "../types";
 import { getTrendContext } from "./trends";
 
-// Single, high-quality script instruction that works for all topics.
-// Replaces the old VIBE_INSTRUCTIONS system which produced boring, generic output.
+// Educational/documentary style — used for cartoon style where facts and depth matter.
 const SCRIPT_INSTRUCTION = `Write a gripping, high-retention short-form video script. Every script MUST follow these rules without exception:
 
 1. COLD OPEN — No "in this video," no "today we're looking at," no title restating. Drop the viewer directly into a specific, sensory, high-stakes moment. Start mid-action. The first sentence should make someone stop scrolling.
@@ -16,6 +15,23 @@ const SCRIPT_INSTRUCTION = `Write a gripping, high-retention short-form video sc
 5. NO FILLER — Cut every word that could be removed without losing information. "The fact that" → cut. "It is worth noting that" → cut. "Interestingly" → cut. Every single sentence earns its place or it goes.
 
 6. PUNCHY CLOSER — End with one resonant line that zooms out — not a summary, not a "so what did we learn today," just a gut-punch final beat that sticks.`;
+
+// Fun/relatable style — used for stickman style where personality and humor win.
+// Stickman videos are social-media-native shorts: quick, punchy, relatable.
+// The last thing they should sound like is a documentary narrator or a Wikipedia article.
+const STICKMAN_SCRIPT_INSTRUCTION = `Write a fun, punchy, highly-relatable short-form video script in the style of a clever friend explaining something. Every script MUST follow these rules:
+
+1. RELATABLE HOOK — Open with a painfully recognizable everyday situation. The "you know that feeling when…" energy. No executives, no company names, no dollar amounts — just moments every viewer has personally lived through.
+
+2. KEEP IT LIGHT — This is entertainment first. Tone: smart friend over coffee, a little cheeky, never a textbook. No statistics, no academic language, no narrators.
+
+3. RHYTHM — Short punchy sentences. Then a quick one-liner. Let it breathe for a beat. Then hit again. Keep it moving.
+
+4. RELATABLE BEATS PRECISE — "You know how some people reply in 30 seconds and others wait 3 days?" beats any statistic. Real-feeling everyday scenarios beat cited sources.
+
+5. NO FILLER — Cut everything that doesn't earn a laugh, a nod, or move the idea forward. Every sentence earns its place.
+
+6. PUNCHY CLOSER — End with the "so which one are you?" moment, a fast one-liner, or one memorable trick to tell them apart. Never a summary. Never "so what have we learned."`;
 
 /**
  * Groq version of script generation — genuinely free, no credit card
@@ -137,19 +153,29 @@ Premise: ${req.storyPremise}
 Visual prompts must use ${req.style} art style. Each scene's visualPrompt must be fully self-contained: describe both characters fully (appearance, clothing, expression), the setting, the action, and the emotional tone of the frame.`
     : "";
 
-  // Consistency for illustrated styles: Pollinations has no memory
-  // between image calls, so if scene visualPrompts just say "the same
-  // character as before" the image generator has nothing to work with
-  // and every shot drifts. The fix is to make Groq do the consistency
-  // work up front — lock a character/setting description once, then
-  // write that FULL description into every single scene's visualPrompt
-  // that features them, spelled out completely each time rather than
-  // referenced by name. Repetitive on purpose: each image prompt must
-  // stand alone.
-  const consistencyBlock = `\n\nBefore writing scenes: privately decide on a locked character description (hair, skin tone, clothing, build — driven by this specific topic, not generic defaults) for any recurring character, and a locked setting description (palette, key elements, lighting) for any setting the script revisits. Then, for every scene's "visualPrompt", write out the COMPLETE character and setting description in full every single time they appear — never a shorthand reference like "the same character" or "Scene 2's setting." Each visualPrompt is used in total isolation by an image generator with no memory of other scenes, so it must be a fully self-contained description on its own: character (if present) fully described, setting fully described, pose/action, expression, and framing — every time, even if that means repeating the same sentences across many scenes.`;
+  // Consistency for illustrated styles: Pollinations has no memory between
+  // image calls, so visualPrompts must be fully self-contained each time.
+  //
+  // STICKMAN: Groq must NOT describe hair/skin/clothing — stickman characters
+  // are identical circle-head stick figures with no appearance features.
+  // Describing "Maya, 29, dark hair, gray blazer" makes Pollinations render
+  // a realistic/anime human and ignore the stickman style suffix. Stickman
+  // prompts must describe only ACTIONS, POSES, EMOTIONS, and the flat-color
+  // BACKGROUND — never physical human appearance.
+  //
+  // CARTOON: Lock a full character description and repeat it in every scene,
+  // since the cartoon style renders distinct characters worth describing.
+  const consistencyBlock =
+    req.style === "stickman"
+      ? `\n\nVisual prompt rules for STICKMAN style — read carefully:\n- Every "visualPrompt" must describe ONLY what the stickmen are DOING and what the BACKGROUND looks like.\n- DO NOT describe hair, skin tone, clothing, age, ethnicity, or any physical human detail. Stickman characters are identical circle-head stick figures — they have no appearance features whatsoever.\n- Good examples: "two stickmen arguing with speech bubbles, simple office background in blue and white", "a stickman running away from a crowd of stickmen, flat green field background", "one stickman slumped over a desk looking exhausted, warm yellow room background".\n- The background should use 2-3 flat solid colors with simple geometric shapes.\n- Every visualPrompt must be fully self-contained: number of stickmen, their poses/actions, the emotional mood, and the setting — every time.`
+      : `\n\nBefore writing scenes: privately decide on a locked character description (hair, skin tone, clothing, build — driven by this specific topic, not generic defaults) for any recurring character, and a locked setting description (palette, key elements, lighting) for any setting the script revisits. Then, for every scene's "visualPrompt", write out the COMPLETE character and setting description in full every single time they appear — never a shorthand reference like "the same character" or "Scene 2's setting." Each visualPrompt is used in total isolation by an image generator with no memory of other scenes, so it must be a fully self-contained description on its own: character (if present) fully described, setting fully described, pose/action, expression, and framing — every time, even if that means repeating the same sentences across many scenes.`;
+
+  // Stickman = fun social-media shorts; cartoon = educational explainer.
+  // The two formats need completely different tones, so each gets its own instruction.
+  const activeInstruction = req.style === "stickman" ? STICKMAN_SCRIPT_INSTRUCTION : SCRIPT_INSTRUCTION;
 
   const systemPrompt = `You write scripts for ${req.style} short-form videos.
-${SCRIPT_INSTRUCTION}${consistencyBlock}
+${activeInstruction}${consistencyBlock}
 Output ONLY valid JSON matching this shape, no other text:
 {"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
 Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}${remixBlock}${comparisonBlock}${dramaBlock}`;
