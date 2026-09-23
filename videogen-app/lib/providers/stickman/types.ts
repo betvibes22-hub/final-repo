@@ -32,6 +32,16 @@ export type BgTheme =
   | "bold-blue" // vivid blue accent
   | "bold-green";
 
+/** Scene environment type — drives what's drawn behind the stickmen */
+export type BgScene =
+  | "outdoor"   // sky, sun, clouds, trees, green ground
+  | "city"      // skyline, building silhouettes, lit windows, sidewalk
+  | "indoor"    // wall, floor planks, window, bookshelf
+  | "night"     // dark sky, moon crescent, stars, silhouette trees
+  | "tech"      // circuit board lines, monitor, data nodes, dark floor
+  | "beach"     // sky, sun, ocean waves, sand
+  | "default";  // decorative circles (colour-theme backdrop)
+
 /** Visual rendering style */
 export type AnimStyle =
   | "classic"   // black outlines, white fill
@@ -86,6 +96,8 @@ export interface StickmanFrameSpec {
   panY?: number;
   /** Entrance slide offset in pixels (positive = from right, negative = from left) */
   slideX?: number;
+  /** Scene environment type — drives what's drawn in the background */
+  bgScene?: BgScene;
 }
 
 /** Config produced by interpreter for one scene clip */
@@ -108,4 +120,6 @@ export interface StickmanSceneConfig {
   panToY?: number;
   /** how the clip enters the scene */
   entranceType?: EntranceType;
+  /** Scene environment for rich background drawing */
+  bgScene?: BgScene;
 }
