@@ -154,56 +154,224 @@ export default function Home() {
   }
 
   return (
-    
+    <div
+      style={{
+        maxWidth: 1100,
+        margin: "0 auto",
+        padding: "48px 24px",
+        fontFamily: "sans-serif",
+      }}
+    >
       {/* HEADER */}
-      
-        
-          🎬 YouTube Shorts Generator
-        
-        
+      <div style={{ marginBottom: 40, textAlign: "center" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 14px",
+            marginBottom: 18,
+            borderRadius: 999,
+            border: "1px solid rgba(212,175,55,0.5)",
+            background: "rgba(212,175,55,0.08)",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#d4af37",
+            letterSpacing: 1,
+            textTransform: "uppercase",
+          }}
+        >
+          {'🎬'} YouTube Shorts Generator
+        </div>
+        <h1
+          style={{
+            fontSize: 42,
+            fontWeight: 800,
+            color: "#f2eee3",
+            margin: "0 0 10px",
+            lineHeight: 1.15,
+          }}
+        >
           What&apos;s the Difference?
-        
-        
+        </h1>
+        <p style={{ color: "#b8b2a0", fontSize: 16, maxWidth: 520, margin: "0 auto" }}>
           Type two concepts. Get a viral Short explaining the difference — stickman style, 9:16, ready to upload.
-        
-      
+        </p>
+      </div>
 
-      
+      <div style={{ display: "flex", gap: 40, flexWrap: "wrap" }}>
+        {/* MAIN COLUMN */}
+        <main style={{ flex: "2 1 480px", minWidth: 320 }}>
+          {/* A vs B INPUTS */}
+          <div
+            style={{
+              display: "flex",
+              gap: 16,
+              alignItems: "center",
+              marginBottom: 28,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={labelStyle}>Concept A</label>
+              <input
+                type="text"
+                value={conceptA}
+                onChange={(e) => setConceptA(e.target.value)}
+                placeholder="e.g. JPEG"
+                style={inputStyle}
+                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+              />
+            </div>
 
-            
+            <div
+              style={{
+                flexShrink: 0,
+                marginTop: 24,
+                fontSize: 28,
+                fontWeight: 800,
+                color: "#d4af37",
+                lineHeight: 1,
+              }}
+            >
               vs
-            
+            </div>
 
-            
-          
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <label style={labelStyle}>Concept B</label>
+              <input
+                type="text"
+                value={conceptB}
+                onChange={(e) => setConceptB(e.target.value)}
+                placeholder="e.g. PNG"
+                style={inputStyle}
+                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+              />
+            </div>
+          </div>
 
           {/* LOCKED FORMAT BADGE */}
-          
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              marginBottom: 28,
+              flexWrap: "wrap",
+            }}
+          >
             {[
               { icon: "🖊️", label: "Stickman" },
               { icon: "📱", label: "9:16 Shorts" },
               { icon: "⚡", label: "~45 seconds" },
               { icon: "🎯", label: "5-scene script" },
             ].map((badge) => (
-              
-                {badge.icon}
-                {badge.label}
-              
+              <div
+                key={badge.label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  background: "rgba(212,175,55,0.08)",
+                  border: "1px solid rgba(212,175,55,0.2)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#c9a830",
+                }}
+              >
+                <span>{badge.icon}</span>
+                <span>{badge.label}</span>
+              </div>
             ))}
-          
+          </div>
 
           {/* VOICE PICKER */}
-          
-          
-          
+          <label style={labelStyle}>Voice</label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <select
+              value={voiceGender}
+              onChange={(e) => {
+                const g = e.target.value as VoiceGender;
+                setVoiceGender(g);
+                setVoiceName(VOICES_BY_GENDER[g][0].key);
+              }}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            >
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+            <select
+              value={voiceName}
+              onChange={(e) => setVoiceName(e.target.value)}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            >
+              {VOICES_BY_GENDER[voiceGender].map((v) => (
+                <option key={v.key} value={v.key}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={voicePace}
+              onChange={(e) => setVoicePace(e.target.value as VoicePace)}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            >
+              <option value="slower">Slower</option>
+              <option value="normal">Normal pace</option>
+              <option value="faster">Faster</option>
+            </select>
+          </div>
+          <button
+            onClick={handlePreviewVoice}
+            disabled={previewingVoice}
+            style={{
+              padding: "7px 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              background: "transparent",
+              color: "#d4af37",
+              border: "1px solid rgba(212,175,55,0.5)",
+              borderRadius: 6,
+              cursor: previewingVoice ? "default" : "pointer",
+              marginBottom: 28,
+              opacity: previewingVoice ? 0.6 : 1,
+            }}
+          >
+            {previewingVoice ? "Loading..." : "▶ Preview voice"}
+          </button>
           {voicePreviewError && (
-            
+            <p style={{ color: "#e08a8a", fontSize: 12, marginTop: -22, marginBottom: 20 }}>
               {voicePreviewError}
-            
+            </p>
           )}
 
           {/* GENERATE BUTTON */}
-          
+          <button
+            onClick={handleGenerate}
+            disabled={!!busy || !canSubmit}
+            style={{
+              width: "100%",
+              padding: "16px 20px",
+              fontSize: 17,
+              fontWeight: 700,
+              background: canSubmit && !busy ? "#d4af37" : "rgba(212,175,55,0.15)",
+              color: canSubmit && !busy ? "#0b0a08" : "#6b6656",
+              border: "1px solid #d4af37",
+              borderRadius: 10,
+              cursor: busy || !canSubmit ? "default" : "pointer",
+              transition: "all 0.15s",
+              letterSpacing: 0.3,
+            }}
+          >
+            {submitting
+              ? "Writing script..."
+              : busy
+              ? "Generating..."
+              : conceptA && conceptB
+              ? `Generate "${conceptA} vs ${conceptB}"`
+              : "Generate Short"}
+          </button>
 
           {/* JOB STATUS */}
           {job && (
@@ -226,73 +394,169 @@ export default function Home() {
           )}
 
           {/* EXAMPLES */}
-          
-          
+          <div style={{ marginTop: 32 }}>
+            <p style={{ fontSize: 12, color: "#6b6656", marginBottom: 10, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>
+              Try these
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {EXAMPLES.map((ex) => (
+                <button
+                  key={ex.a + ex.b}
+                  onClick={() => {
+                    setConceptA(ex.a);
+                    setConceptB(ex.b);
+                  }}
+                  style={{
+                    padding: "7px 13px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: "transparent",
+                    color: "#9d9784",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 999,
+                    cursor: "pointer",
+                  }}
+                >
+                  {ex.a} vs {ex.b}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* PAST VIDEOS */}
-          
-            Past videos
-            {libraryLoading && Loading...}
+          <div style={{ marginTop: 52 }}>
+            <h2 style={{ fontSize: 18, marginBottom: 16, color: "#f2eee3" }}>Past videos</h2>
+            {libraryLoading && <p style={{ color: "#666" }}>Loading...</p>}
             {!libraryLoading && library.length === 0 && (
-              
+              <p style={{ color: "#666", fontSize: 13 }}>
                 Nothing yet — your finished Shorts will show up here.
-              
+              </p>
             )}
             {library.map((v, i) => (
-              
-                
-                  {v.title}
-                  
+              <div key={i} style={{ marginBottom: 28 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 8,
+                  }}
+                >
+                  <p style={{ fontWeight: 600, margin: 0, color: "#f2eee3", fontSize: 14 }}>{v.title}</p>
+                  <a href={v.url} download style={{ fontSize: 13, color: "#d4af37", textDecoration: "none" }}>
                     ↓ Download
-                  
-                
-                
-              
+                  </a>
+                </div>
+                <video controls style={{ width: "100%", borderRadius: 8, maxHeight: 480 }}>
+                  <source src={v.url} type="video/mp4" />
+                </video>
+              </div>
             ))}
-          
+          </div>
 
           {/* OTHER TOOLS */}
-          
-            
-              
-                
-                  🎭 Short Drama Generator
-                
-                
+          <div style={{ marginTop: 40, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div
+              style={{
+                padding: "18px 22px",
+                borderRadius: 10,
+                border: "1px solid rgba(212,175,55,0.2)",
+                background: "rgba(212,175,55,0.04)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <p style={{ fontWeight: 700, color: "#f2eee3", margin: "0 0 3px", fontSize: 14 }}>
+                  {'🎭'} Short Drama Generator
+                </p>
+                <p style={{ color: "#9d9784", fontSize: 13, margin: 0 }}>
                   Premise + two characters → 5-scene animated drama Short.
-                
-              
-              
-            
+                </p>
+              </div>
+              <Link
+                href="/drama"
+                style={{
+                  flexShrink: 0,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#d4af37",
+                  border: "1px solid #d4af37",
+                  borderRadius: 8,
+                  textDecoration: "none",
+                }}
+              >
+                Make a drama →
+              </Link>
+            </div>
 
-            
-              
-                
+            <div
+              style={{
+                padding: "18px 22px",
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(255,255,255,0.02)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <p style={{ fontWeight: 700, color: "#f2eee3", margin: "0 0 3px", fontSize: 14 }}>
                   🔁 Remix a video
-                
-                
+                </p>
+                <p style={{ color: "#9d9784", fontSize: 13, margin: 0 }}>
                   Upload any video and get an original one inspired by its structure.
-                
-              
-              
-            
-          
-        
+                </p>
+              </div>
+              <Link
+                href="/remix"
+                style={{
+                  flexShrink: 0,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#9d9784",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: 8,
+                  textDecoration: "none",
+                }}
+              >
+                Remix →
+              </Link>
+            </div>
+          </div>
+        </main>
 
         {/* SIDEBAR */}
         <ActivitySidebar job={job} />
-      
+      </div>
 
       {/* FOOTER */}
-      
+      <footer
+        style={{
+          marginTop: 64,
+          paddingTop: 28,
+          borderTop: "1px solid rgba(255,255,255,0.1)",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+          gap: 18,
+        }}
+      >
         {POWERED_BY.map((item) => (
-          
-            {item.name}
-            {item.does}
-          
+          <div key={item.name}>
+            <p style={{ fontWeight: 600, margin: "0 0 3px", color: "#d4af37", fontSize: 13 }}>{item.name}</p>
+            <p style={{ fontSize: 12, color: "#8a8474", margin: 0, lineHeight: 1.5 }}>{item.does}</p>
+          </div>
         ))}
-      
-    
+      </footer>
+    </div>
   );
 }
 
