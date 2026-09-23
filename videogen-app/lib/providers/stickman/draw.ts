@@ -416,9 +416,6 @@ function drawBackground(ctx: any, spec: StickmanFrameSpec) {
   ctx.arc(width * 0.1, height * 0.65, 140, 0, 2 * PI);
   ctx.fill();
   ctx.globalAlpha = 1;
-
-  const PI = Math.PI;
-  void PI;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -493,9 +490,6 @@ function drawText(ctx: any, spec: StickmanFrameSpec) {
 }
 
 // ─── main render function ─────────────────────────────────────────────────
-
-const PI2 = Math.PI;
-void PI2;
 
 /**
  * Renders a single stickman frame to a PNG buffer.
