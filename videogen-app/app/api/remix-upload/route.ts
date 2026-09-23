@@ -5,7 +5,7 @@ import os from "os";
 import crypto from "crypto";
 import { execFileSync } from "child_process";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import { GenerateRequest, ScriptVibe, StyleVariant, VideoStyle, VoiceGender, VoicePace } from "../../../lib/types";
+import { AspectRatio, GenerateRequest, ScriptVibe, StyleVariant, VideoStyle, VoiceGender, VoicePace } from "../../../lib/types";
 import { createJob, setJobFailed, logActivity } from "../../../lib/jobs";
 import { runPipeline } from "../../../lib/pipeline";
 import { transcribeAudioGroq } from "../../../lib/providers/transcribe";
@@ -31,13 +31,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GROQ_API_KEY is not set." }, { status: 500 });
   }
 
-  const style = (form.get("style") as VideoStyle) || "realistic";
+  const style = (form.get("style") as VideoStyle) || "cartoon";
   const styleVariant = (form.get("styleVariant") as StyleVariant) || "default";
   const vibe = (form.get("vibe") as ScriptVibe) || "documentary";
   const targetLengthSeconds = Number(form.get("targetLengthSeconds")) || 45;
   const voiceGender = (form.get("voiceGender") as VoiceGender) || undefined;
   const voiceName = (form.get("voiceName") as string) || undefined;
   const voicePace = (form.get("voicePace") as VoicePace) || undefined;
+  const aspectRatio = (form.get("aspectRatio") as AspectRatio) || undefined;
 
   const workDir = path.join(os.tmpdir(), "videogen-remix-uploads", crypto.randomUUID());
   fs.mkdirSync(workDir, { recursive: true });
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest) {
       voiceGender,
       voiceName,
       voicePace,
+      aspectRatio,
     };
 
     const job = createJob(request);
