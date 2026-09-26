@@ -1,46 +1,54 @@
 import { GenerateRequest, Script, Scene } from "../types";
 import { getTrendContext } from "./trends";
 
-// Educational/documentary style — used for cartoon style where facts and depth matter.
-const SCRIPT_INSTRUCTION = `Write a gripping, high-retention short-form video script. Every script MUST follow these rules without exception:
+// ─── Stickman Explainer Engine v1.0 ──────────────────────────────────────────
+//
+// Timing model : 3–4 seconds per clip  →  3.5s average
+// Word model   : EXACTLY 6–7 words per scene narration line
+// Scene count  : targetLengthSeconds / 3.5  (min 4)
+//
+// Structure
+//   Scene 1  — HOOK     : counterintuitive claim / question that stops the scroll
+//   Middle   — MECHANISM: one self-contained idea per scene, building in sequence
+//   Last     — PAYOFF   : resonant gut-punch closing beat (never a summary)
+//
+// Visual prompts : ONE continuous prose paragraph — no line breaks, no headers,
+// no bullet points, no field-style labels.  Always include a stickman action
+// keyword so the programmatic renderer picks the correct pose.
+// ─────────────────────────────────────────────────────────────────────────────
 
-1. COLD OPEN — No "in this video," no "today we're looking at," no title restating. Drop the viewer directly into a specific, sensory, high-stakes moment. Start mid-action. The first sentence should make someone stop scrolling.
+const ENGINE_RULES = `You are the Stickman Explainer Engine v1.0. Write short-form stickman video scripts that follow every one of these rules without exception:
 
-2. SPECIFIC FACTS ONLY — Every claim needs a name, number, date, or place. Never write "a long time ago" — write the year. Never "scientists discovered" — name the scientist. Never "many people" — give a real figure. Vague claims are cut.
+1. HOOK FIRST — Scene 1 opens with the most counterintuitive or surprising fact about the topic. No "in this video", no title restatement, no warm-up. Drop straight into the claim or question that makes a viewer stop scrolling.
 
-3. SENTENCE RHYTHM — Mix long sentences with sudden short punches. Fragment. Two words. Then a longer sentence to breathe and expand before the next short hit. Rhythm is what keeps people listening.
+2. EXACT WORD COUNT — Each scene's "text" narration must be EXACTLY 6 to 7 words. Count every word before outputting. Rewrite any line that is off by even one word. Never output a line whose count is outside 6–7. This is the single most critical rule — a line longer than 7 words gets cut off before it finishes.
 
-4. BUILD TENSION — Every scene should plant a question the viewer needs answered. Seed a specific detail early. Pay it off later. Make them need to reach the end.
+3. MECHANISM MIDDLE — Each middle scene explains one self-contained idea. Build from the hook toward the payoff in clear sequence. Short. Plain. One beat per scene.
 
-5. NO FILLER — Cut every word that could be removed without losing information. "The fact that" → cut. "It is worth noting that" → cut. "Interestingly" → cut. Every single sentence earns its place or it goes.
+4. PAYOFF LAST — The final scene lands a resonant closing fact or gut-punch line. Not a summary. Not "so what did we learn today." Just the moment that sticks.
 
-6. PUNCHY CLOSER — End with one resonant line that zooms out — not a summary, not a "so what did we learn today," just a gut-punch final beat that sticks.`;
+5. PLAIN ENGLISH — Conversational, like a clever friend explaining something. No jargon. No academic language. No statistics unless they are striking and specific.
 
-// Fun/relatable style — used for stickman style where personality and humor win.
-// Stickman videos are social-media-native shorts: quick, punchy, relatable.
-// The last thing they should sound like is a documentary narrator or a Wikipedia article.
-const STICKMAN_SCRIPT_INSTRUCTION = `Write a fun, punchy, highly-relatable short-form video script in the style of a clever friend explaining something. Every script MUST follow these rules:
+6. VISUAL PROMPTS AS PROSE — Each "visualPrompt" must be ONE single flowing paragraph of natural-language English with absolutely no line breaks, no headers, no bullet points, and no field-style labels like "CAMERA:" or "AUDIO:". Weave the background, the stickman action, and the mood together into one continuous descriptive sentence. Always include at least one stickman pose keyword so the renderer picks the right animation: celebrate, explain, question, walk, point, teach, slump, idle, argue, think.`;
 
-1. RELATABLE HOOK — Open with a painfully recognizable everyday situation. The "you know that feeling when…" energy. No executives, no company names, no dollar amounts — just moments every viewer has personally lived through.
-
-2. KEEP IT LIGHT — This is entertainment first. Tone: smart friend over coffee, a little cheeky, never a textbook. No statistics, no academic language, no narrators.
-
-3. RHYTHM — Short punchy sentences. Then a quick one-liner. Let it breathe for a beat. Then hit again. Keep it moving.
-
-4. RELATABLE BEATS PRECISE — "You know how some people reply in 30 seconds and others wait 3 days?" beats any statistic. Real-feeling everyday scenarios beat cited sources.
-
-5. NO FILLER — Cut everything that doesn't earn a laugh, a nod, or move the idea forward. Every sentence earns its place.
-
-6. PUNCHY CLOSER — End with the "so which one are you?" moment, a fast one-liner, or one memorable trick to tell them apart. Never a summary. Never "so what have we learned."`;
+const STICKMAN_VISUAL_GUIDE = `
+Visual prompt guide for the stickman renderer — write every visualPrompt as one continuous prose paragraph:
+- Describe the stickman's ACTION and POSE using at least one of these keywords: celebrate, explain, question, walk, point, teach, slump, idle, argue, think
+- Describe the BACKGROUND as 2–3 flat solid colors with simple geometric shapes
+- State the EMOTIONAL MOOD of the scene
+- ONE paragraph, no line breaks, no labels
+Good: "A stickman stands center frame excitedly pointing upward while explaining something, set against a bold blue background with simple white geometric shapes, the overall mood is energetic and optimistic."
+Bad: "CAMERA: wide shot. CHARACTER: stickman pointing. BACKGROUND: blue." — never do this.`;
 
 /**
- * Groq version of script generation — genuinely free, no credit card
- * required (console.groq.com). Uses an OpenAI-compatible endpoint.
+ * Stickman Explainer Engine v1.0 — Groq-backed script generation.
  *
- * Supports hybrid mode: if req.customScript is set alongside
- * scriptMode "hybrid", the user's draft is handed to the model as
- * material to expand/polish into full scenes, rather than writing from
- * scratch.
+ * Engine rules (hardwired):
+ *  - Clip length : 3.5 s average (3–4 s per clip)
+ *  - Words/scene : EXACTLY 6–7 words per narration line
+ *  - Scene count : targetLengthSeconds / 3.5  (min 4; comparison/drama always 5)
+ *  - Structure   : Hook → Mechanism(s) → Payoff
+ *  - Visual prompts: ONE continuous prose paragraph, no headers or bullets
  */
 export async function generateScriptGroq(
   req: GenerateRequest,
@@ -60,131 +68,85 @@ export async function generateScriptGroq(
     onLog?.(`Tavily: found ${trendTerms.length} trend term(s) to weave into the script`, "tavily");
   }
 
+  // ── Engine timing math ────────────────────────────────────────────────────
+  // 3–4 s per clip → 3.5 s average per engine spec
+  const CLIP_SECONDS = 3.5;
+
   const isComparison = req.scriptMode === "comparison" && !!req.conceptA && !!req.conceptB;
-  // Piper TTS speaks at ~4 words/second (faster than the old 2.5 estimate).
-  // Under-estimating this is why 45-second videos were ending at ~28 seconds —
-  // the TTS finished narrating 112 words in ~28s, then -shortest cut the video.
-  // 4.0 wps means ~180 words for a 45s script → audio fills the full duration.
-  const targetWordCount = Math.round(req.targetLengthSeconds * 4.0);
-  // Comparison and drama formats are always exactly 5 scenes regardless of length
+  const isDrama      = req.scriptMode === "drama"      && !!req.storyPremise;
+
+  // Comparison and drama are always exactly 5 scenes (locked structure).
+  // All other topics: divide total length by clip duration, min 4 scenes.
   const sceneCount =
-    isComparison || req.scriptMode === "drama" ? 5 : Math.max(3, Math.round(req.targetLengthSeconds / 15));
+    isComparison || isDrama
+      ? 5
+      : Math.max(4, Math.round(req.targetLengthSeconds / CLIP_SECONDS));
+
   onLog?.(
-    `Groq: drafting ${sceneCount}-scene script (~${targetWordCount} words)`,
+    `Groq: drafting ${sceneCount}-scene script (6–7 words per scene · ${Math.round(sceneCount * CLIP_SECONDS)}s total)`,
     "groq"
   );
 
+  // ── Optional blocks ───────────────────────────────────────────────────────
+
   const trendBlock =
     trendTerms.length > 0
-      ? `\n\nReal current search interest around this topic — weave in whichever genuinely fit:\n${trendTerms.map((t) => `- ${t}`).join("\n")}`
+      ? `\n\nReal current search interest around this topic — weave in whichever fit naturally:\n${trendTerms.map((t) => `- ${t}`).join("\n")}`
       : "";
 
-  const draftWordCount = req.customScript?.trim().split(/\s+/).filter(Boolean).length ?? 0;
   const hybridBlock =
     req.scriptMode === "hybrid" && req.customScript?.trim()
-      ? `\n\nThe user wrote a rough draft below (${draftWordCount} words). It is a starting point ONLY — it is too short/thin on its own. Do NOT simply repeat, lightly rephrase, or return it unchanged. You MUST substantially rewrite and expand it to reach ~${targetWordCount} words: keep their core ideas, topic, and tone, but add narrative detail, concrete examples, transitions between beats, and depth on each point so it reads like a fully produced script, not a draft. If the draft doesn't specify a structure, write it as a well-paced explainer with a hook, build-up, and payoff. Their draft:\n"""\n${req.customScript.trim()}\n"""`
+      ? `\n\nThe user wrote a rough draft below. Use it as structural inspiration — keep their core topic and ideas but rewrite every line to hit the exact 6–7 word count per engine rules. Their draft:\n"""\n${req.customScript.trim()}\n"""`
       : "";
 
-  // Remix mode: the user uploaded a video and wants "one like that,"
-  // remade. This is deliberately built as structural inspiration only —
-  // topic, pacing, beat order, how it hooks and pays off — never as
-  // wording to copy. The instruction below is explicit and repeated for
-  // a reason: reusing someone else's actual sentences would just be
-  // uncredited copying with extra steps, not a genuinely new video.
   const remixBlock =
     req.scriptMode === "remix" && req.remixTranscript?.trim()
-      ? `\n\nBelow is a transcript of a video the user wants to remake in their own style. Study its TOPIC, STRUCTURE, and PACING only — the order of ideas, how it opens, how it builds, how it lands. Do NOT copy, closely paraphrase, or lift any sentence or distinctive phrase from it. Write a completely ORIGINAL script, in your own words throughout, that covers similar ground with a similar shape but is not a reproduction of this one in any way. Treat the transcript as a structural reference, never as source text to quote from. Transcript:\n"""\n${req.remixTranscript.trim().slice(0, 6000)}\n"""`
+      ? `\n\nTranscript to remix — study its STRUCTURE only (hook style, beat order, payoff type). Write a completely original script on the same topic. Never copy or paraphrase any sentence. Transcript:\n"""\n${req.remixTranscript.trim().slice(0, 4000)}\n"""`
       : "";
 
-  // "What's the Difference?" comparison format — locked 5-scene structure:
-  // Scene 1: Hook — open with a sharp, specific scenario where the difference matters
-  // Scene 2: Define A — concrete real-world example of concept A
-  // Scene 3: Define B — contrasting real-world example of concept B
-  // Scene 4: The Key Difference — one sharp, memorable line + same-scenario example showing the split
-  // Scene 5: Closer — a quick memorable trick or test to tell them apart forever
-  const comparisonBlock =
-    req.scriptMode === "comparison" && req.conceptA && req.conceptB
-      ? `\n\nThis is a "What's the Difference?" Short. Write EXACTLY 5 scenes following this locked structure — do NOT add or remove scenes, do NOT reorder them:
+  const comparisonBlock = isComparison
+    ? `\n\nThis is a "What's the Difference?" Short. Write EXACTLY 5 scenes — do not add or remove any:
 
-SCENE 1 — HOOK: Open mid-action with a vivid, specific real-world scenario where confusing ${req.conceptA} and ${req.conceptB} causes a real problem. No "today we compare" — drop straight into the moment. Make it embarrassing, costly, or funny. One punchy question to close the scene.
+SCENE 1 — HOOK: A vivid real-world scenario where confusing ${req.conceptA} and ${req.conceptB} causes a real problem. Drop in mid-action. End with a punchy question. EXACTLY 6–7 words.
+SCENE 2 — DEFINE ${req.conceptA.toUpperCase()}: One concrete, specific real-world example. EXACTLY 6–7 words.
+SCENE 3 — DEFINE ${req.conceptB.toUpperCase()}: Contrasting real-world example. EXACTLY 6–7 words.
+SCENE 4 — THE KEY DIFFERENCE: One sharp line capturing the core split. EXACTLY 6–7 words.
+SCENE 5 — CLOSER: A memorable trick to tell them apart forever. EXACTLY 6–7 words.
 
-SCENE 2 — DEFINE ${req.conceptA.toUpperCase()}: What IS ${req.conceptA}? Give one concrete, specific, real-world example with a name, number, or place. Show it in action. Short sentences. No fluff.
-
-SCENE 3 — DEFINE ${req.conceptB.toUpperCase()}: What IS ${req.conceptB}? Same treatment — one vivid example that clearly contrasts with Scene 2. Parallel structure helps viewers compare.
-
-SCENE 4 — THE KEY DIFFERENCE: One sharp, memorable sentence that captures the core split. Then put BOTH concepts into the exact same scenario side by side — show what happens with ${req.conceptA} versus what happens with ${req.conceptB}. Make the gap obvious and memorable.
-
-SCENE 5 — THE CLOSER: End with a single memorable trick, rule of thumb, or mental test the viewer can use FOREVER to tell them apart. Punchy. Confident. Done.
-
-The visual prompts for scenes 2–4 should show two stickman figures or two side-by-side situations — the "A vs B" contrast must be visible in the image, not just in the narration.`
-      : "";
-
-  // Short Drama mode — Toonflow-inspired format:
-  // Scene 1: Setup — establish characters & world fast
-  // Scene 2: Inciting Incident — something disrupts everything
-  // Scene 3: Rising Tension — stakes escalate, conflict deepens
-  // Scene 4: Confrontation / Twist — the moment of revelation or clash
-  // Scene 5: Cliffhanger or Resolution — leave them wanting more (or tie it off)
-  const isDrama = req.scriptMode === "drama" && !!req.storyPremise;
-  const genreLabel = req.genre ?? "drama";
-  const charALabel = req.characterA?.trim() || "Character A";
-  const charBLabel = req.characterB?.trim() || "Character B";
-  const dramaBlock = isDrama
-    ? `\n\nThis is a SHORT DRAMA — a ${genreLabel} story told in exactly 5 scenes. Write it like a storyboard for an animated short: vivid, cinematic, character-driven. Every line should feel like it belongs on screen.
-
-Characters:
-- ${charALabel} — the protagonist. Describe them physically once in Scene 1's visualPrompt and reuse the EXACT same description in every scene they appear. Never write "the same character" — spell it out completely each time.
-- ${charBLabel} — the second lead. Same rule: locked physical description, repeated fully in every visualPrompt.
-
-Write EXACTLY 5 scenes:
-
-SCENE 1 — SETUP: Drop into the world mid-moment. Establish ${charALabel} and ${charBLabel}'s dynamic immediately. No exposition dumps — show, don't tell. End with a hint that something is about to change.
-
-SCENE 2 — INCITING INCIDENT: Something happens that shatters the status quo. Surprise the viewer. Keep it visual. Every word of narration should feel urgent.
-
-SCENE 3 — RISING TENSION: Stakes escalate. ${charALabel} and ${charBLabel} clash, ally, or discover something that makes it worse. Short punchy sentences. The viewer should feel the pressure building.
-
-SCENE 4 — CONFRONTATION / TWIST: The scene everyone came for. A revelation, a betrayal, a decision, a moment of no return. Make it land hard. One line that recontextualizes everything before it.
-
-SCENE 5 — CLIFFHANGER OR RESOLUTION: If ${genreLabel} calls for it, end on a gut-punch cliffhanger that makes them want episode 2. If it's a complete story, close with one resonant line that sticks. No summaries. No "and that's how…" — just the moment.
-
-Premise: ${req.storyPremise}
-
-Visual prompts must use ${req.style} art style. Each scene's visualPrompt must be fully self-contained: describe both characters fully (appearance, clothing, expression), the setting, the action, and the emotional tone of the frame.`
+Scenes 2–4 visualPrompts should describe two stickman figures representing each concept side by side.`
     : "";
 
-  // Consistency for illustrated styles: Pollinations has no memory between
-  // image calls, so visualPrompts must be fully self-contained each time.
-  //
-  // STICKMAN: Groq must NOT describe hair/skin/clothing — stickman characters
-  // are identical circle-head stick figures with no appearance features.
-  // Describing "Maya, 29, dark hair, gray blazer" makes Pollinations render
-  // a realistic/anime human and ignore the stickman style suffix. Stickman
-  // prompts must describe only ACTIONS, POSES, EMOTIONS, and the flat-color
-  // BACKGROUND — never physical human appearance.
-  //
-  // CARTOON: Lock a full character description and repeat it in every scene,
-  // since the cartoon style renders distinct characters worth describing.
-  const consistencyBlock =
-    req.style === "stickman"
-      ? `\n\nVisual prompt rules for STICKMAN style — read carefully:\n- Every "visualPrompt" must describe ONLY what the stickmen are DOING and what the BACKGROUND looks like.\n- DO NOT describe hair, skin tone, clothing, age, ethnicity, or any physical human detail. Stickman characters are identical circle-head stick figures — they have no appearance features whatsoever.\n- Good examples: "two stickmen arguing with speech bubbles, simple office background in blue and white", "a stickman running away from a crowd of stickmen, flat green field background", "one stickman slumped over a desk looking exhausted, warm yellow room background".\n- The background should use 2-3 flat solid colors with simple geometric shapes.\n- Every visualPrompt must be fully self-contained: number of stickmen, their poses/actions, the emotional mood, and the setting — every time.`
-      : `\n\nBefore writing scenes: privately decide on a locked character description (hair, skin tone, clothing, build — driven by this specific topic, not generic defaults) for any recurring character, and a locked setting description (palette, key elements, lighting) for any setting the script revisits. Then, for every scene's "visualPrompt", write out the COMPLETE character and setting description in full every single time they appear — never a shorthand reference like "the same character" or "Scene 2's setting." Each visualPrompt is used in total isolation by an image generator with no memory of other scenes, so it must be a fully self-contained description on its own: character (if present) fully described, setting fully described, pose/action, expression, and framing — every time, even if that means repeating the same sentences across many scenes.`;
+  const genreLabel = req.genre ?? "drama";
+  const charALabel  = req.characterA?.trim() || "Character A";
+  const charBLabel  = req.characterB?.trim() || "Character B";
+  const dramaBlock = isDrama
+    ? `\n\nThis is a SHORT DRAMA — a ${genreLabel} story in exactly 5 scenes. Every scene "text" must be EXACTLY 6–7 words.
 
-  // Stickman = fun social-media shorts; cartoon = educational explainer.
-  // The two formats need completely different tones, so each gets its own instruction.
-  const activeInstruction = req.style === "stickman" ? STICKMAN_SCRIPT_INSTRUCTION : SCRIPT_INSTRUCTION;
+SCENE 1 — SETUP: Establish the world and characters mid-moment.
+SCENE 2 — INCITING INCIDENT: Something shatters the status quo.
+SCENE 3 — RISING TENSION: Stakes escalate between ${charALabel} and ${charBLabel}.
+SCENE 4 — CONFRONTATION / TWIST: The moment of revelation or clash.
+SCENE 5 — CLIFFHANGER OR RESOLUTION: The gut-punch final beat.
 
-  const systemPrompt = `You write scripts for ${req.style} short-form videos.
-${activeInstruction}${consistencyBlock}
-Output ONLY valid JSON matching this shape, no other text:
-{"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
-Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${trendBlock}${hybridBlock}${remixBlock}${comparisonBlock}${dramaBlock}`;
+Premise: ${req.storyPremise}. Characters: ${charALabel} and ${charBLabel}.`
+    : "";
 
   const regenerateBlock =
     attempt > 0
-      ? `\n\nThis is a regeneration — the previous draft was rejected. Write a genuinely different take: a different opening scenario/hook, different specific facts or examples, different structural choices within the required beats. Do not reuse phrasing, sentences, or the same specific examples from a typical first-pass answer to this topic.`
+      ? `\n\nThis is a regeneration — write a genuinely different hook, different specific examples, and a different structural approach. Do not reuse any phrasing or examples from a typical first-pass answer.`
       : "";
 
+  // ── System prompt ─────────────────────────────────────────────────────────
+  const systemPrompt = `You write scripts for stickman short-form videos.
+${ENGINE_RULES}
+${STICKMAN_VISUAL_GUIDE}
+
+Output ONLY valid JSON matching this shape — no other text:
+{"title": string, "scenes": [{"text": string, "visualPrompt": string}]}
+
+Write EXACTLY ${sceneCount} scenes. Each scene "text" must be EXACTLY 6 to 7 words — count word by word before outputting, and rewrite any line that misses the count.${trendBlock}${hybridBlock}${remixBlock}${comparisonBlock}${dramaBlock}${regenerateBlock}`;
+
+  // ── API call ──────────────────────────────────────────────────────────────
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -193,18 +155,13 @@ Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${
     },
     body: JSON.stringify({
       model: "openai/gpt-oss-120b",
-      // Without an explicit temperature, regenerating with an identical
-      // prompt could return an almost identical script — this is what
-      // was causing "regenerate" to not actually change anything.
+      // Higher temp on regenerations so the model doesn't return the same script
       temperature: attempt > 0 ? 1.1 : 0.9,
-      // Default max_tokens on Groq is 1024 — far too small for a 5-scene
-      // script with fully self-contained visualPrompts (each one repeats
-      // the complete character + setting description). 4096 gives plenty
-      // of headroom without hitting Groq free-tier rate limits.
+      // 4096 gives plenty of headroom for all scenes + visualPrompts
       max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: systemPrompt + regenerateBlock },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: isComparison
@@ -222,19 +179,19 @@ Write exactly ${sceneCount} scenes, ~${targetWordCount} words total narration.${
   }
 
   const data = await response.json();
-  const text = data.choices?.[0]?.message?.content ?? "";
+  const raw = data.choices?.[0]?.message?.content ?? "";
   const parsed: { title: string; scenes: { text: string; visualPrompt: string }[] } =
-    JSON.parse(text);
+    JSON.parse(raw);
 
   onLog?.(`Groq: script drafted — "${parsed.title}" (${parsed.scenes.length} scenes)`, "groq");
 
-  const perSceneSeconds = req.targetLengthSeconds / parsed.scenes.length;
+  // Each scene is exactly CLIP_SECONDS long per engine spec
   const scenes: Scene[] = parsed.scenes.map((s, i) => ({
     index: i,
     text: s.text,
     visualPrompt: s.visualPrompt,
-    startSeconds: Math.round(i * perSceneSeconds),
-    durationSeconds: Math.round(perSceneSeconds),
+    startSeconds:    Math.round(i * CLIP_SECONDS),
+    durationSeconds: Math.round(CLIP_SECONDS),
   }));
 
   return {
