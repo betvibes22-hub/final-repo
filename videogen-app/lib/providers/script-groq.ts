@@ -108,8 +108,8 @@ export async function generateScriptGroq(
     ? `\n\nThis is a "What's the Difference?" Short. Write EXACTLY 5 scenes — do not add or remove any:
 
 SCENE 1 — HOOK: A vivid real-world scenario where confusing ${req.conceptA} and ${req.conceptB} causes a real problem. Drop in mid-action. End with a punchy question. EXACTLY 6–7 words.
-SCENE 2 — DEFINE ${req.conceptA.toUpperCase()}: One concrete, specific real-world example. EXACTLY 6–7 words.
-SCENE 3 — DEFINE ${req.conceptB.toUpperCase()}: Contrasting real-world example. EXACTLY 6–7 words.
+SCENE 2 — DEFINE ${req.conceptA!.toUpperCase()}: One concrete, specific real-world example. EXACTLY 6–7 words.
+SCENE 3 — DEFINE ${req.conceptB!.toUpperCase()}: Contrasting real-world example. EXACTLY 6–7 words.
 SCENE 4 — THE KEY DIFFERENCE: One sharp line capturing the core split. EXACTLY 6–7 words.
 SCENE 5 — CLOSER: A memorable trick to tell them apart forever. EXACTLY 6–7 words.
 
